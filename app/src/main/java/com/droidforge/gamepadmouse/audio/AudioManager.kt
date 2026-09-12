@@ -14,8 +14,9 @@ class AudioManager(private val context: Context) {
     private val TAG = "AudioManager"
     
     private var soundPool: SoundPool? = null
-    private val loadedSounds = mutableMapOf<AudioCue, Int>()
+    private val loadedSounds = mutableMapOf<AudioCue, MutableList<Int>>()  // Changed to list for variants
     private var currentPack: AudioPack = AudioPack.MINIMAL
+    private val random = kotlin.random.Random.Default
     
     init {
         initSoundPool()
@@ -40,17 +41,64 @@ class AudioManager(private val context: Context) {
         soundPool?.let { pool ->
             when (pack) {
                 AudioPack.MINIMAL -> {
-                    // Simple single-frequency tones (we'll use ToneGenerator as fallback for now)
-                    // In a production app, you'd have actual sound files here
+                    // Use system tones for minimal
                 }
                 AudioPack.MECHANICAL -> {
-                    // Mechanical click sounds (would load from res/raw if we had files)
+                    // Load mechanical sound files with variants
+                    loadedSounds[AudioCue.TAP] = mutableListOf(
+                        pool.load(context, R.raw.mechanical_tap, 1),
+                        pool.load(context, R.raw.mechanical_tap2, 1)
+                    )
+                    loadedSounds[AudioCue.LONG_PRESS] = mutableListOf(
+                        pool.load(context, R.raw.mechanical_long, 1)
+                    )
+                    loadedSounds[AudioCue.MODE_SWITCH_MOUSE] = mutableListOf(
+                        pool.load(context, R.raw.mechanical_toggle, 1)
+                    )
+                    loadedSounds[AudioCue.MODE_SWITCH_GAMEPAD] = mutableListOf(
+                        pool.load(context, R.raw.mechanical_toggle, 1)
+                    )
+                    loadedSounds[AudioCue.SCROLL] = mutableListOf(
+                        pool.load(context, R.raw.mechanical_tap2, 1)
+                    )
                 }
                 AudioPack.RETRO -> {
-                    // 8-bit style beeps (would load from res/raw if we had files)
+                    // Load retro sound files
+                    loadedSounds[AudioCue.TAP] = mutableListOf(
+                        pool.load(context, R.raw.retro_tap, 1)
+                    )
+                    loadedSounds[AudioCue.LONG_PRESS] = mutableListOf(
+                        pool.load(context, R.raw.retro_long, 1)
+                    )
+                    loadedSounds[AudioCue.MODE_SWITCH_MOUSE] = mutableListOf(
+                        pool.load(context, R.raw.retro_toggle, 1)
+                    )
+                    loadedSounds[AudioCue.MODE_SWITCH_GAMEPAD] = mutableListOf(
+                        pool.load(context, R.raw.retro_toggle, 1)
+                    )
+                    loadedSounds[AudioCue.SCROLL] = mutableListOf(
+                        pool.load(context, R.raw.retro_tap, 1)
+                    )
                 }
                 AudioPack.SCIFI -> {
-                    // Futuristic UI sounds (would load from res/raw if we had files)
+                    // Load sci-fi sound files with variants
+                    loadedSounds[AudioCue.TAP] = mutableListOf(
+                        pool.load(context, R.raw.scifi_tap, 1),
+                        pool.load(context, R.raw.scifi_tap2, 1),
+                        pool.load(context, R.raw.scifi_tap3, 1)
+                    )
+                    loadedSounds[AudioCue.LONG_PRESS] = mutableListOf(
+                        pool.load(context, R.raw.scifi_long, 1)
+                    )
+                    loadedSounds[AudioCue.MODE_SWITCH_MOUSE] = mutableListOf(
+                        pool.load(context, R.raw.scifi_toggle, 1)
+                    )
+                    loadedSounds[AudioCue.MODE_SWITCH_GAMEPAD] = mutableListOf(
+                        pool.load(context, R.raw.scifi_toggle, 1)
+                    )
+                    loadedSounds[AudioCue.SCROLL] = mutableListOf(
+                        pool.load(context, R.raw.scifi_tap2, 1)
+                    )
                 }
                 AudioPack.CUSTOM -> {
                     // User-selected sounds (would load from user-selected paths)
@@ -68,13 +116,21 @@ class AudioManager(private val context: Context) {
     fun play(cue: AudioCue, volume: Float = 1.0f) {
         if (currentPack == AudioPack.SILENT) return
         
-        // For now, fall back to ToneGenerator since we don't have actual audio files yet
-        // In production, this would play from SoundPool:
-        // loadedSounds[cue]?.let { soundId ->
-        //     soundPool?.play(soundId, volume, volume, 1, 0, 1.0f)
-        // }
+        // Try to play from loaded sounds first
+        loadedSounds[cue]?.let { variants ->
+            if (variants.isNotEmpty()) {
+                // Pick a random variant
+                val soundId = variants.random(random)
+                
+                // Random pitch variation: 0.9 to 1.1 (±10%)
+                val pitch = 0.9f + random.nextFloat() * 0.2f
+                
+                soundPool?.play(soundId, volume, volume, 1, 0, pitch)
+                return
+            }
+        }
         
-        // Fallback to system tones for now
+        // Fallback to system tones if no sound file loaded (Minimal pack or loading failed)
         playSystemTone(cue)
     }
     
