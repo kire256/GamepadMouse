@@ -420,51 +420,60 @@ private fun AdvancedTab(
                             )
                         }
                         
-                        // Preview button (skip for Silent and Custom)
+                        // Preview buttons (skip for Silent and Custom)
                         if (pack != "SILENT" && pack != "CUSTOM") {
-                            var isPlaying by remember { mutableStateOf(false) }
-                            
-                            androidx.compose.material3.OutlinedButton(
-                                onClick = {
-                                    if (!isPlaying) {
-                                        isPlaying = true
-                                        // Play a preview sound using the service's existing audio manager
-                                        com.droidforge.gamepadmouse.service.GamepadMouseService.instance?.let { service ->
-                                            scope.launch {
-                                                try {
-                                                    // Save current pack
-                                                    val originalPack = settings.audioPack
-                                                    
-                                                    // Temporarily switch to preview pack
-                                                    repo.setAudioPack(pack)
-                                                    kotlinx.coroutines.delay(100) // Wait for settings to update
-                                                    
-                                                    // Play preview sequence: TAP, pause, LONG_PRESS, pause, MODE_SWITCH
-                                                    service.playAudioCue(com.droidforge.gamepadmouse.audio.AudioCue.TAP)
-                                                    kotlinx.coroutines.delay(300)
-                                                    service.playAudioCue(com.droidforge.gamepadmouse.audio.AudioCue.LONG_PRESS)
-                                                    kotlinx.coroutines.delay(300)
-                                                    service.playAudioCue(com.droidforge.gamepadmouse.audio.AudioCue.MODE_SWITCH_MOUSE)
-                                                    
-                                                    // Restore original pack
-                                                    kotlinx.coroutines.delay(200)
-                                                    repo.setAudioPack(originalPack)
-                                                } catch (e: Exception) {
-                                                    android.util.Log.e("AudioPreview", "Failed to preview: ${e.message}")
-                                                } finally {
-                                                    isPlaying = false
+                            Column(modifier = Modifier.padding(start = 8.dp)) {
+                                // Individual preview buttons for each sound type
+                                val previewSounds = listOf(
+                                    "Tap" to com.droidforge.gamepadmouse.audio.AudioCue.TAP,
+                                    "Hold" to com.droidforge.gamepadmouse.audio.AudioCue.LONG_PRESS,
+                                    "Toggle" to com.droidforge.gamepadmouse.audio.AudioCue.MODE_SWITCH_MOUSE
+                                )
+                                
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    previewSounds.forEach { (label, cue) ->
+                                        var isPlaying by remember { mutableStateOf(false) }
+                                        
+                                        androidx.compose.material3.OutlinedButton(
+                                            onClick = {
+                                                if (!isPlaying) {
+                                                    isPlaying = true
+                                                    com.droidforge.gamepadmouse.service.GamepadMouseService.instance?.let { service ->
+                                                        scope.launch {
+                                                            try {
+                                                                // Save current pack
+                                                                val originalPack = settings.audioPack
+                                                                
+                                                                // Temporarily switch to preview pack
+                                                                repo.setAudioPack(pack)
+                                                                kotlinx.coroutines.delay(50) // Short delay for settings update
+                                                                
+                                                                // Play the specific sound
+                                                                service.playAudioCue(cue)
+                                                                
+                                                                // Restore original pack
+                                                                kotlinx.coroutines.delay(100)
+                                                                repo.setAudioPack(originalPack)
+                                                            } catch (e: Exception) {
+                                                                android.util.Log.e("AudioPreview", "Failed: ${e.message}")
+                                                            } finally {
+                                                                isPlaying = false
+                                                            }
+                                                        }
+                                                    }
                                                 }
-                                            }
+                                            },
+                                            enabled = !isPlaying,
+                                            modifier = Modifier.width(65.dp)
+                                        ) {
+                                            Text(
+                                                label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1
+                                            )
                                         }
                                     }
-                                },
-                                enabled = !isPlaying,
-                                modifier = Modifier.padding(start = 8.dp)
-                            ) {
-                                Text(
-                                    if (isPlaying) "Playing..." else "Preview",
-                                    style = MaterialTheme.typography.labelSmall
-                                )
+                                }
                             }
                         }
                         
