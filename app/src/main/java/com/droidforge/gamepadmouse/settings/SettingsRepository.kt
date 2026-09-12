@@ -54,6 +54,14 @@ class SettingsRepository(private val context: Context) {
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
+        // Migrate toggleChord from old string format to stringSet
+        val toggleChordSet = try {
+            p[Keys.TOGGLE_CHORD]?.mapNotNull { it.toIntOrNull() }?.toSet()
+        } catch (e: ClassCastException) {
+            // Old format was a string, try to parse it
+            null
+        }
+        
         Settings(
             baseSpeedPxPerSec = p[Keys.BASE_SPEED] ?: 900f,
             slowMultiplier = p[Keys.SLOW_MULT] ?: 0.35f,
@@ -65,7 +73,7 @@ class SettingsRepository(private val context: Context) {
             swapSticks = p[Keys.SWAP_STICKS] ?: false,
             circularScroll = p[Keys.CIRCULAR_SCROLL] ?: false,
             startInMouseMode = p[Keys.START_IN_MOUSE_MODE] ?: true,
-            toggleChord = p[Keys.TOGGLE_CHORD]?.mapNotNull { it.toIntOrNull() }?.toSet() ?: DefaultBindings.toggleChord,
+            toggleChord = toggleChordSet ?: DefaultBindings.toggleChord,
             chordHoldDurationMs = p[Keys.CHORD_HOLD_DURATION] ?: 0L,
             buttonBindings = p[Keys.BINDINGS]?.let(::decodeBindings) ?: DefaultBindings.buttons,
             audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL"

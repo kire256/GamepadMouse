@@ -380,33 +380,71 @@ private fun AdvancedTab(
                 Spacer(Modifier.height(8.dp))
                 
                 // Audio pack selection
-                val packOptions = listOf("MINIMAL", "RETRO", "SCIFI", "SILENT")
+                val packOptions = listOf("MINIMAL", "MECHANICAL", "RETRO", "SCIFI", "SILENT", "CUSTOM")
                 val packLabels = listOf(
                     "Minimal (System tones)",
+                    "Mechanical (Clicks)",
                     "Retro (8-bit)", 
                     "Sci-Fi",
-                    "Silent (No sounds)"
+                    "Silent (No sounds)",
+                    "Custom (Your files)"
                 )
                 
                 packOptions.forEachIndexed { index, pack ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                scope.launch { repo.setAudioPack(pack) }
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        androidx.compose.material3.RadioButton(
-                            selected = settings.audioPack == pack,
-                            onClick = { scope.launch { repo.setAudioPack(pack) } }
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            packLabels[index],
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    scope.launch { repo.setAudioPack(pack) }
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.RadioButton(
+                                selected = settings.audioPack == pack,
+                                onClick = { scope.launch { repo.setAudioPack(pack) } }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                packLabels[index],
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        
+                        // Preview button (skip for Silent and Custom)
+                        if (pack != "SILENT" && pack != "CUSTOM") {
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = {
+                                    // Play a preview sound
+                                    com.droidforge.gamepadmouse.service.GamepadMouseService.instance?.let { service ->
+                                        // Temporarily load this pack and play a sample
+                                        scope.launch {
+                                            try {
+                                                val testAudio = com.droidforge.gamepadmouse.audio.AudioManager(service)
+                                                testAudio.loadPack(com.droidforge.gamepadmouse.audio.AudioPack.valueOf(pack))
+                                                testAudio.play(com.droidforge.gamepadmouse.audio.AudioCue.TAP)
+                                                kotlinx.coroutines.delay(200)
+                                                testAudio.play(com.droidforge.gamepadmouse.audio.AudioCue.MODE_SWITCH_MOUSE)
+                                                kotlinx.coroutines.delay(100)
+                                                testAudio.release()
+                                            } catch (e: Exception) {
+                                                android.util.Log.e("AudioPreview", "Failed to preview: ${e.message}")
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                Text("Preview", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                 }
             }

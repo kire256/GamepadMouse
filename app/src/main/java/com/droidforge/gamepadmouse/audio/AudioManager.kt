@@ -43,11 +43,18 @@ class AudioManager(private val context: Context) {
                     // Simple single-frequency tones (we'll use ToneGenerator as fallback for now)
                     // In a production app, you'd have actual sound files here
                 }
+                AudioPack.MECHANICAL -> {
+                    // Mechanical click sounds (would load from res/raw if we had files)
+                }
                 AudioPack.RETRO -> {
                     // 8-bit style beeps (would load from res/raw if we had files)
                 }
                 AudioPack.SCIFI -> {
                     // Futuristic UI sounds (would load from res/raw if we had files)
+                }
+                AudioPack.CUSTOM -> {
+                    // User-selected sounds (would load from user-selected paths)
+                    // TODO: Implement file picker integration
                 }
                 AudioPack.SILENT -> {
                     // No sounds
@@ -73,12 +80,47 @@ class AudioManager(private val context: Context) {
     
     private fun playSystemTone(cue: AudioCue) {
         // This is a temporary fallback - in production we'd use actual sound files
-        val toneType = when (cue) {
-            AudioCue.MODE_SWITCH_MOUSE -> android.media.ToneGenerator.TONE_PROP_BEEP2
-            AudioCue.MODE_SWITCH_GAMEPAD -> android.media.ToneGenerator.TONE_PROP_BEEP
-            AudioCue.TAP -> android.media.ToneGenerator.TONE_PROP_ACK
-            AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_PROP_ACK
-            AudioCue.SCROLL -> android.media.ToneGenerator.TONE_CDMA_ABBR_ALERT
+        val toneType = when (currentPack) {
+            AudioPack.MECHANICAL -> {
+                // Use sharper, click-like tones for mechanical pack
+                when (cue) {
+                    AudioCue.MODE_SWITCH_MOUSE -> android.media.ToneGenerator.TONE_PROP_PROMPT
+                    AudioCue.MODE_SWITCH_GAMEPAD -> android.media.ToneGenerator.TONE_PROP_BEEP
+                    AudioCue.TAP -> android.media.ToneGenerator.TONE_DTMF_1  // Sharp click
+                    AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_DTMF_2
+                    AudioCue.SCROLL -> android.media.ToneGenerator.TONE_DTMF_0
+                }
+            }
+            AudioPack.RETRO -> {
+                // 8-bit style tones
+                when (cue) {
+                    AudioCue.MODE_SWITCH_MOUSE -> android.media.ToneGenerator.TONE_CDMA_PIP
+                    AudioCue.MODE_SWITCH_GAMEPAD -> android.media.ToneGenerator.TONE_CDMA_ABBR_ALERT
+                    AudioCue.TAP -> android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD
+                    AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_CDMA_KEYPAD_VOLUME_KEY_LITE
+                    AudioCue.SCROLL -> android.media.ToneGenerator.TONE_CDMA_PIP
+                }
+            }
+            AudioPack.SCIFI -> {
+                // Futuristic tones
+                when (cue) {
+                    AudioCue.MODE_SWITCH_MOUSE -> android.media.ToneGenerator.TONE_CDMA_HIGH_L
+                    AudioCue.MODE_SWITCH_GAMEPAD -> android.media.ToneGenerator.TONE_CDMA_LOW_L
+                    AudioCue.TAP -> android.media.ToneGenerator.TONE_CDMA_MED_L
+                    AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_CDMA_HIGH_SS
+                    AudioCue.SCROLL -> android.media.ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK
+                }
+            }
+            else -> {
+                // Minimal/default
+                when (cue) {
+                    AudioCue.MODE_SWITCH_MOUSE -> android.media.ToneGenerator.TONE_PROP_BEEP2
+                    AudioCue.MODE_SWITCH_GAMEPAD -> android.media.ToneGenerator.TONE_PROP_BEEP
+                    AudioCue.TAP -> android.media.ToneGenerator.TONE_PROP_ACK
+                    AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_PROP_ACK
+                    AudioCue.SCROLL -> android.media.ToneGenerator.TONE_CDMA_ABBR_ALERT
+                }
+            }
         }
         
         try {
@@ -101,9 +143,11 @@ class AudioManager(private val context: Context) {
 
 enum class AudioPack(val label: String) {
     MINIMAL("Minimal (System tones)"),
+    MECHANICAL("Mechanical (Clicks)"),
     RETRO("Retro (8-bit)"),
     SCIFI("Sci-Fi"),
-    SILENT("Silent (No sounds)")
+    SILENT("Silent (No sounds)"),
+    CUSTOM("Custom (Your files)")
 }
 
 enum class AudioCue {
