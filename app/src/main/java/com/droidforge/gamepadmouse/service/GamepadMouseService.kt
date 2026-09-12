@@ -195,6 +195,11 @@ class GamepadMouseService : AccessibilityService() {
         }
         Log.i(TAG, "mode -> $newMode")
     }
+    
+    // Public method for audio preview
+    fun playAudioCue(cue: AudioCue) {
+        audioManager.play(cue)
+    }
 
     // ---------------------------------------------------------------- overlay
 

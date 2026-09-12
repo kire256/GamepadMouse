@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -260,6 +261,7 @@ private fun AdvancedTab(
     repo: SettingsRepository,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
+    val context = LocalContext.current
     var showChordRecorder by remember { mutableStateOf(false) }
     
     Column(
@@ -420,29 +422,66 @@ private fun AdvancedTab(
                         
                         // Preview button (skip for Silent and Custom)
                         if (pack != "SILENT" && pack != "CUSTOM") {
+                            var isPlaying by remember { mutableStateOf(false) }
+                            
                             androidx.compose.material3.OutlinedButton(
                                 onClick = {
-                                    // Play a preview sound
-                                    com.droidforge.gamepadmouse.service.GamepadMouseService.instance?.let { service ->
-                                        // Temporarily load this pack and play a sample
-                                        scope.launch {
-                                            try {
-                                                val testAudio = com.droidforge.gamepadmouse.audio.AudioManager(service)
-                                                testAudio.loadPack(com.droidforge.gamepadmouse.audio.AudioPack.valueOf(pack))
-                                                testAudio.play(com.droidforge.gamepadmouse.audio.AudioCue.TAP)
-                                                kotlinx.coroutines.delay(200)
-                                                testAudio.play(com.droidforge.gamepadmouse.audio.AudioCue.MODE_SWITCH_MOUSE)
-                                                kotlinx.coroutines.delay(100)
-                                                testAudio.release()
-                                            } catch (e: Exception) {
-                                                android.util.Log.e("AudioPreview", "Failed to preview: ${e.message}")
+                                    if (!isPlaying) {
+                                        isPlaying = true
+                                        // Play a preview sound using the service's existing audio manager
+                                        com.droidforge.gamepadmouse.service.GamepadMouseService.instance?.let { service ->
+                                            scope.launch {
+                                                try {
+                                                    // Save current pack
+                                                    val originalPack = settings.audioPack
+                                                    
+                                                    // Temporarily switch to preview pack
+                                                    repo.setAudioPack(pack)
+                                                    kotlinx.coroutines.delay(100) // Wait for settings to update
+                                                    
+                                                    // Play preview sequence: TAP, pause, LONG_PRESS, pause, MODE_SWITCH
+                                                    service.playAudioCue(com.droidforge.gamepadmouse.audio.AudioCue.TAP)
+                                                    kotlinx.coroutines.delay(300)
+                                                    service.playAudioCue(com.droidforge.gamepadmouse.audio.AudioCue.LONG_PRESS)
+                                                    kotlinx.coroutines.delay(300)
+                                                    service.playAudioCue(com.droidforge.gamepadmouse.audio.AudioCue.MODE_SWITCH_MOUSE)
+                                                    
+                                                    // Restore original pack
+                                                    kotlinx.coroutines.delay(200)
+                                                    repo.setAudioPack(originalPack)
+                                                } catch (e: Exception) {
+                                                    android.util.Log.e("AudioPreview", "Failed to preview: ${e.message}")
+                                                } finally {
+                                                    isPlaying = false
+                                                }
                                             }
                                         }
                                     }
                                 },
+                                enabled = !isPlaying,
                                 modifier = Modifier.padding(start = 8.dp)
                             ) {
-                                Text("Preview", style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    if (isPlaying) "Playing..." else "Preview",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+                        
+                        // File picker for Custom pack
+                        if (pack == "CUSTOM") {
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = {
+                                    // TODO: Launch file picker for custom sounds
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Custom sound file picker coming soon!",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                modifier = Modifier.padding(start = 8.dp)
+                            ) {
+                                Text("Choose Files", style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
