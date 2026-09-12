@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gamepad Mouse</string>
+    <string name="service_label">Gamepad Mouse</string>
+    <string name="service_summary">Control a pointer with your game controller</string>
+    <string name="service_description">Gamepad Mouse turns your game controller into a system-wide mouse pointer. It listens for controller button presses and stick movement to move an on-screen cursor and perform taps, long-presses, scrolls, and Back/Home/Recents. It does not read or collect any on-screen content.</string>
+
+    <string name="status_service_off">Accessibility service is OFF</string>
+    <string name="status_service_on">Accessibility service is ON</string>
+    <string name="enable_service">Enable in Accessibility Settings</string>
+    <string name="mode_gamepad">Gamepad mode (pass-through)</string>
+    <string name="mode_mouse">Mouse mode (cursor active)</string>
+    <string name="toggle_hint">Press Start + Select on the controller to toggle modes</string>
+</resources>

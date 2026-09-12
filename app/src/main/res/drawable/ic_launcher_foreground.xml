@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple pointer arrow over a gamepad silhouette; placeholder until final branding -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- gamepad body -->
+    <path android:fillColor="#0D47A1"
+        android:pathData="M30,52 C30,44 36,40 44,40 H64 C72,40 78,44 78,52 L82,70 C83,76 78,80 73,78 L64,72 H44 L35,78 C30,80 25,76 26,70 Z" />
+    <!-- cursor arrow -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M46,30 L46,64 L54,56 L61,70 L66,68 L59,54 L70,54 Z" />
+    <path android:strokeColor="#000000" android:strokeWidth="2" android:fillColor="#00000000"
+        android:pathData="M46,30 L46,64 L54,56 L61,70 L66,68 L59,54 L70,54 Z" />
+</vector>
