@@ -6,7 +6,9 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.droidforge.gamepadmouse.input.DefaultBindings
 import com.droidforge.gamepadmouse.input.MouseAction
@@ -19,14 +21,15 @@ data class Settings(
     val fastMultiplier: Float = 2.5f,
     val deadzone: Float = 0.15f,
     val curveExponent: Float = 1.6f,
-    val scrollStepPx: Float = 220f,
-    val swapSticks: Boolean = false,
+    val scrollStepPx: Float = 180f,
     val invertScroll: Boolean = false,
+    val swapSticks: Boolean = false,
     val circularScroll: Boolean = false,
-    val startInMouseMode: Boolean = false,
-    val chordHoldDurationMs: Long = 0L,  // 0 = instant toggle, >0 = must hold for this long
-    val buttonBindings: Map<Int, MouseAction> = DefaultBindings.buttons,
+    val startInMouseMode: Boolean = true,
     val toggleChord: Set<Int> = DefaultBindings.toggleChord,
+    val chordHoldDurationMs: Long = 0L,
+    val buttonBindings: Map<Int, MouseAction> = DefaultBindings.buttons,
+    val audioPack: String = "MINIMAL"  // AudioPack enum name
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gamepad_mouse")
@@ -38,15 +41,16 @@ class SettingsRepository(private val context: Context) {
         val SLOW_MULT = floatPreferencesKey("slow_mult")
         val FAST_MULT = floatPreferencesKey("fast_mult")
         val DEADZONE = floatPreferencesKey("deadzone")
-        val CURVE = floatPreferencesKey("curve")
+        val CURVE_EXP = floatPreferencesKey("curve_exp")
         val SCROLL_STEP = floatPreferencesKey("scroll_step")
-        val SWAP_STICKS = booleanPreferencesKey("swap_sticks")
         val INVERT_SCROLL = booleanPreferencesKey("invert_scroll")
+        val SWAP_STICKS = booleanPreferencesKey("swap_sticks")
         val CIRCULAR_SCROLL = booleanPreferencesKey("circular_scroll")
-        val START_IN_MOUSE = booleanPreferencesKey("start_in_mouse")
-        val CHORD_HOLD_MS = androidx.datastore.preferences.core.longPreferencesKey("chord_hold_ms")
-        val BINDINGS = stringPreferencesKey("bindings")      // "keyCode:ACTION,keyCode:ACTION"
-        val TOGGLE_CHORD = stringPreferencesKey("toggle_chord") // "keyCode,keyCode"
+        val START_IN_MOUSE_MODE = booleanPreferencesKey("start_in_mouse_mode")
+        val TOGGLE_CHORD = stringSetPreferencesKey("toggle_chord")
+        val CHORD_HOLD_DURATION = longPreferencesKey("chord_hold_duration")
+        val BINDINGS = stringPreferencesKey("bindings")
+        val AUDIO_PACK = stringPreferencesKey("audio_pack")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
@@ -55,15 +59,16 @@ class SettingsRepository(private val context: Context) {
             slowMultiplier = p[Keys.SLOW_MULT] ?: 0.35f,
             fastMultiplier = p[Keys.FAST_MULT] ?: 2.5f,
             deadzone = p[Keys.DEADZONE] ?: 0.15f,
-            curveExponent = p[Keys.CURVE] ?: 1.6f,
-            scrollStepPx = p[Keys.SCROLL_STEP] ?: 220f,
-            swapSticks = p[Keys.SWAP_STICKS] ?: false,
+            curveExponent = p[Keys.CURVE_EXP] ?: 1.6f,
+            scrollStepPx = p[Keys.SCROLL_STEP] ?: 180f,
             invertScroll = p[Keys.INVERT_SCROLL] ?: false,
+            swapSticks = p[Keys.SWAP_STICKS] ?: false,
             circularScroll = p[Keys.CIRCULAR_SCROLL] ?: false,
-            startInMouseMode = p[Keys.START_IN_MOUSE] ?: false,
-            chordHoldDurationMs = p[Keys.CHORD_HOLD_MS] ?: 0L,
+            startInMouseMode = p[Keys.START_IN_MOUSE_MODE] ?: true,
+            toggleChord = p[Keys.TOGGLE_CHORD]?.mapNotNull { it.toIntOrNull() }?.toSet() ?: DefaultBindings.toggleChord,
+            chordHoldDurationMs = p[Keys.CHORD_HOLD_DURATION] ?: 0L,
             buttonBindings = p[Keys.BINDINGS]?.let(::decodeBindings) ?: DefaultBindings.buttons,
-            toggleChord = p[Keys.TOGGLE_CHORD]?.let(::decodeChord) ?: DefaultBindings.toggleChord,
+            audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL"
         )
     }
 
@@ -75,10 +80,11 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSwapSticks(v: Boolean) = context.dataStore.edit { it[Keys.SWAP_STICKS] = v }
     suspend fun setInvertScroll(v: Boolean) = context.dataStore.edit { it[Keys.INVERT_SCROLL] = v }
     suspend fun setCircularScroll(v: Boolean) = context.dataStore.edit { it[Keys.CIRCULAR_SCROLL] = v }
-    suspend fun setStartInMouseMode(v: Boolean) = context.dataStore.edit { it[Keys.START_IN_MOUSE] = v }
-    suspend fun setChordHoldDuration(v: Long) = context.dataStore.edit { it[Keys.CHORD_HOLD_MS] = v }
+    suspend fun setStartInMouseMode(v: Boolean) = context.dataStore.edit { it[Keys.START_IN_MOUSE_MODE] = v }
+    suspend fun setChordHoldDuration(v: Long) = context.dataStore.edit { it[Keys.CHORD_HOLD_DURATION] = v }
     suspend fun setBindings(b: Map<Int, MouseAction>) = context.dataStore.edit { it[Keys.BINDINGS] = encodeBindings(b) }
-    suspend fun setToggleChord(c: Set<Int>) = context.dataStore.edit { it[Keys.TOGGLE_CHORD] = c.joinToString(",") }
+    suspend fun setToggleChord(c: Set<Int>) = context.dataStore.edit { it[Keys.TOGGLE_CHORD] = c.map { it.toString() }.toSet() }
+    suspend fun setAudioPack(pack: String) = context.dataStore.edit { it[Keys.AUDIO_PACK] = pack }
 
     companion object {
         fun encodeBindings(b: Map<Int, MouseAction>): String =

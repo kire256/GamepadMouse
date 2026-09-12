@@ -1,5 +1,6 @@
 package com.droidforge.gamepadmouse.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -353,11 +354,63 @@ private fun AdvancedTab(
             }
         }
         
-        FeatureCard(
-            title = "Audio cue packs",
-            description = "Replace beeps with custom sound effects. Choose from bundled packs or pick your own files.",
-            available = false,
-        )
+        // Audio cue packs (NOW AVAILABLE!)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            )
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Audio cue packs", style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Available now!",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    "Choose sound effects for button clicks and mode changes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                
+                Spacer(Modifier.height(8.dp))
+                
+                // Audio pack selection
+                val packOptions = listOf("MINIMAL", "RETRO", "SCIFI", "SILENT")
+                val packLabels = listOf(
+                    "Minimal (System tones)",
+                    "Retro (8-bit)", 
+                    "Sci-Fi",
+                    "Silent (No sounds)"
+                )
+                
+                packOptions.forEachIndexed { index, pack ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                scope.launch { repo.setAudioPack(pack) }
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = settings.audioPack == pack,
+                            onClick = { scope.launch { repo.setAudioPack(pack) } }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            packLabels[index],
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+        }
         
         FeatureCard(
             title = "Per-device profiles",

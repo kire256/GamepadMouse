@@ -15,6 +15,8 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import com.droidforge.gamepadmouse.audio.AudioCue
+import com.droidforge.gamepadmouse.audio.AudioPack
 import com.droidforge.gamepadmouse.input.ChordDetector
 import com.droidforge.gamepadmouse.input.DefaultBindings
 import com.droidforge.gamepadmouse.input.MouseAction
@@ -108,7 +110,7 @@ class GamepadMouseService : AccessibilityService() {
     private var lastScrollAt = 0L
     private var tapGestureInFlight = false  // only blocks taps, not scrolls
 
-    private var tone: ToneGenerator? = null
+    private lateinit var audioManager: com.droidforge.gamepadmouse.audio.AudioManager
 
     // ---------------------------------------------------------------- lifecycle
 
@@ -123,7 +125,7 @@ class GamepadMouseService : AccessibilityService() {
         displayW = dm.widthPixels.toFloat()
         displayH = dm.heightPixels.toFloat()
         repo = SettingsRepository(this)
-        tone = runCatching { ToneGenerator(AudioManager.STREAM_SYSTEM, 60) }.getOrNull()
+        audioManager = com.droidforge.gamepadmouse.audio.AudioManager(this)
 
         scope.launch {
             var first = true
@@ -131,6 +133,13 @@ class GamepadMouseService : AccessibilityService() {
                 settings = s
                 if (chord.chord != s.toggleChord) chord.chord = s.toggleChord
                 chord.holdDurationMs = s.chordHoldDurationMs
+                // Load audio pack when settings change
+                try {
+                    audioManager.loadPack(AudioPack.valueOf(s.audioPack))
+                } catch (e: Exception) {
+                    Log.w(TAG, "Invalid audio pack: ${s.audioPack}, using MINIMAL")
+                    audioManager.loadPack(AudioPack.MINIMAL)
+                }
                 if (first) {
                     first = false
                     if (s.startInMouseMode) setMode(ServiceMode.MOUSE)
@@ -153,7 +162,7 @@ class GamepadMouseService : AccessibilityService() {
     private fun teardown() {
         removeOverlay()
         scope.cancel()
-        tone?.release(); tone = null
+        audioManager.release()
         instance = null
         _running.value = false
         _mode.value = ServiceMode.GAMEPAD
@@ -180,15 +189,11 @@ class GamepadMouseService : AccessibilityService() {
             ServiceMode.MOUSE -> {
                 addOverlay()
                 scheduleFrame()  // start frame loop immediately so focus is claimed before any stick input
-                beep(ToneGenerator.TONE_PROP_BEEP2)
+                audioManager.play(AudioCue.MODE_SWITCH_MOUSE)
             }
-            ServiceMode.GAMEPAD -> { removeOverlay(); beep(ToneGenerator.TONE_PROP_BEEP) }
+            ServiceMode.GAMEPAD -> { removeOverlay(); audioManager.play(AudioCue.MODE_SWITCH_GAMEPAD) }
         }
         Log.i(TAG, "mode -> $newMode")
-    }
-
-    private fun beep(toneType: Int) {
-        tone?.startTone(toneType, 80)
     }
 
     // ---------------------------------------------------------------- overlay
@@ -504,7 +509,11 @@ class GamepadMouseService : AccessibilityService() {
         val ov = overlay ?: return
         val path = Path().apply { moveTo(ov.cursorX, ov.cursorY) }
         dispatchTap(GestureDescription.StrokeDescription(path, 0, durationMs))
-        if (durationMs <= TAP_MS) beep(ToneGenerator.TONE_PROP_ACK)
+        if (durationMs <= TAP_MS) {
+            audioManager.play(AudioCue.TAP)
+        } else {
+            audioManager.play(AudioCue.LONG_PRESS)
+        }
     }
 
     private fun swipeScroll(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long) {
