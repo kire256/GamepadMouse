@@ -628,7 +628,7 @@ class GamepadMouseService : AccessibilityService() {
         val ov = overlay ?: return
         val path = Path().apply { moveTo(ov.cursorX, ov.cursorY) }
         dispatchTap(GestureDescription.StrokeDescription(path, 0, durationMs))
-        showCursor()  // Show cursor on button action (before hiding on tap)
+        // Don't call showCursor() here - let dispatchTap handle hiding if needed
         if (durationMs <= TAP_MS) {
             audioManager.play(AudioCue.TAP)
         } else {
