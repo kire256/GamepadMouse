@@ -7,6 +7,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BlendMode
+import android.graphics.BlendModeColorFilter
 import android.graphics.RectF
 import android.view.View
 import com.droidforge.gamepadmouse.R
@@ -64,6 +66,7 @@ class CursorOverlayView(context: Context) : View(context) {
         color = 0x55000000; style = Paint.Style.FILL
     }
     private val arrow = Path()
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val blueArrowBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.cursor_blue_arrow) }
     private val targetBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.cursor_target) }
     private val pointer3dBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.cursor_3d_pointer) }
@@ -102,18 +105,29 @@ class CursorOverlayView(context: Context) : View(context) {
             CursorStyle.CROSSHAIR -> drawCrosshair(canvas, cursorX, cursorY)
             CursorStyle.CIRCLE -> drawCircle(canvas, cursorX, cursorY)
             CursorStyle.POINTER -> drawPointer(canvas, cursorX, cursorY)
-            CursorStyle.TRIANGLE -> drawTriangle(canvas, cursorX, cursorY)
+            // Pointer hand/finger — anchored at the index fingertip at bitmap top-left.
+            // Centered=false → rect top-left = (x,y); hotspot = (x,y).
             CursorStyle.BLUE_ARROW -> drawBitmapCursor(canvas, blueArrowBitmap, cursorX, cursorY, false)
+
+            // Target — hotspot at center of the bullseye.
+            // Centered=true → rect centered on (x,y); hotspot = (x,y).
             CursorStyle.TARGET -> drawBitmapCursor(canvas, targetBitmap, cursorX, cursorY, true)
+
+            // 3D pointer — hotspot at the arrowhead tip at bitmap top-left.
+            // Centered=false → rect top-left = (x,y); hotspot = (x,y).
             CursorStyle.POINTER_3D -> drawBitmapCursor(canvas, pointer3dBitmap, cursorX, cursorY, false)
         }
     }
 
     private fun drawBitmapCursor(canvas: Canvas, bitmap: Bitmap, x: Float, y: Float, centered: Boolean) {
         val size = sizePx * 2.2f * cursorSizeMultiplier
+        // Bitmap cursors: non-centered variants (arrow, 3D pointer) use bitmap top-left as
+        // the hotspot so the cursor arrowhead / tip sits at (x, y); centered variant (target)
+        // offsets the rect so its visual center lands on (x, y).
         val left = if (centered) x - size / 2f else x
-        val top = if (centered) y - size / 2f else y
-        canvas.drawBitmap(bitmap, null, RectF(left, top, left + size, top + size), null)
+        val top  = if (centered) y - size / 2f else y
+        bitmapPaint.colorFilter = BlendModeColorFilter(cursorColor, BlendMode.SRC_IN)
+        canvas.drawBitmap(bitmap, null, RectF(left, top, left + size, top + size), bitmapPaint)
     }
     
     private fun drawArrow(canvas: Canvas, x: Float, y: Float) {
