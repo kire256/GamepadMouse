@@ -2,7 +2,7 @@
 
 ## Current milestone
 
-Phase 2 input customization and keyboard-mode MVP.
+Phase 2 input customization and keyboard-mode iteration.
 
 ## Implemented
 
@@ -14,6 +14,10 @@ Phase 2 input customization and keyboard-mode MVP.
 - Keyboard mode MVP with an on-screen QWERTY/numeric/symbol overlay.
 - `Keyboard Mode` is available in the binding picker's **General** category.
 - The Status screen displays the installed version name and version code beneath the app title.
+- Keyboard overlay width and height are adjustable (defaults: 80% × 45%) and bottom-centered for tablets/foldables.
+- Keyboard mode retains the focusable controller capture surface, fixing non-responsive controls.
+- Bindings support single buttons or combinations, mouse/gamepad/both mode targeting, and 0–2000 ms hold delays.
+- Existing legacy bindings migrate to mouse-mode single-button bindings.
 
 ## Keyboard mode controls
 
@@ -31,15 +35,15 @@ Phase 2 input customization and keyboard-mode MVP.
 - Debug APK builds successfully with JDK 21.
 - Debug APK installs on Samsung Galaxy Z Fold 6 (`RFGL23YPJLR`).
 - Installed package: `com.droidforge.gamepadmouse.debug`.
-- Current debug version: `0.2.0-keyboard-mvp-debug (2)`.
+- Current debug version: `0.3.0-bindings-debug (3)`.
 
 ## Next testing
 
-1. Confirm `Keyboard Mode` appears at the bottom of the General binding-action list.
-2. Bind it to an unused controller button.
-3. Test entering/exiting keyboard mode.
-4. Validate character insertion, backspace, space, and enter in real editable fields.
-5. Fix any app-specific accessibility text-entry limitations found during device testing.
+1. Adjust keyboard width/height on the Fold and confirm readability in tablet and phone postures.
+2. Test D-pad/A/B/X/Y/LB/RB/Start/Select in keyboard mode.
+3. Test mouse-only, gamepad-only, and both-mode bindings.
+4. Test two-button combinations with 0 ms and non-zero hold delays.
+5. Validate character insertion, backspace, space, and enter in real editable fields.
 
 ## Known limitations
 

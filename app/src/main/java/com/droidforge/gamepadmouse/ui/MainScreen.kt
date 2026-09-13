@@ -325,6 +325,21 @@ private fun SettingsTab(
             range = 0f..10000f,
             format = { ms -> if (ms == 0f) "Disabled" else "${(ms / 1000).roundToInt()}s" },
         ) { scope.launch { repo.setAutoHideTimeout(it.toLong()) } }
+
+        HorizontalDivider()
+        Text("Keyboard overlay", style = MaterialTheme.typography.titleMedium)
+        SliderRow(
+            label = "Keyboard width",
+            value = settings.keyboardWidthPercent,
+            range = 40f..100f,
+            format = { "${it.roundToInt()}%" },
+        ) { scope.launch { repo.setKeyboardWidthPercent(it) } }
+        SliderRow(
+            label = "Keyboard height",
+            value = settings.keyboardHeightPercent,
+            range = 25f..80f,
+            format = { "${it.roundToInt()}%" },
+        ) { scope.launch { repo.setKeyboardHeightPercent(it) } }
         
         Spacer(Modifier.height(16.dp))
         Text("Movement", style = MaterialTheme.typography.titleMedium)

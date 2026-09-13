@@ -19,6 +19,10 @@ import com.droidforge.gamepadmouse.audio.AudioCue
 import com.droidforge.gamepadmouse.audio.AudioPack
 import com.droidforge.gamepadmouse.input.ChordDetector
 import com.droidforge.gamepadmouse.input.DefaultBindings
+import com.droidforge.gamepadmouse.input.KeyboardCommand
+import com.droidforge.gamepadmouse.input.KeyboardInputRouter
+import com.droidforge.gamepadmouse.input.BindingMatcher
+import com.droidforge.gamepadmouse.input.ButtonBinding
 import com.droidforge.gamepadmouse.input.MouseAction
 import com.droidforge.gamepadmouse.input.ServiceMode
 import com.droidforge.gamepadmouse.input.StickProcessor
@@ -108,6 +112,8 @@ class GamepadMouseService : AccessibilityService() {
 
     private val chord = ChordDetector(DefaultBindings.toggleChord)
     private val heldModifiers = HashSet<MouseAction>()
+    private val bindingMatcher = BindingMatcher()
+    private val bindingHoldJobs = mutableMapOf<ButtonBinding, kotlinx.coroutines.Job>()
     
     // Chord hold timer
     private var chordHoldJob: kotlinx.coroutines.Job? = null
@@ -165,6 +171,8 @@ class GamepadMouseService : AccessibilityService() {
                 // Update cursor size and color
                 overlay?.cursorSizeMultiplier = s.cursorSize
                 overlay?.cursorColor = s.cursorColor
+                keyboardOverlay?.widthPercent = s.keyboardWidthPercent
+                keyboardOverlay?.heightPercent = s.keyboardHeightPercent
                 if (first) {
                     first = false
                     if (s.startInMouseMode) setMode(ServiceMode.MOUSE)
@@ -186,6 +194,7 @@ class GamepadMouseService : AccessibilityService() {
 
     private fun teardown() {
         removeOverlay()
+        removeKeyboardOverlay()
         scope.cancel()
         audioManager.release()
         instance = null
@@ -311,10 +320,14 @@ class GamepadMouseService : AccessibilityService() {
             repo.setToggleChord(newSettings.toggleChord)
             repo.setChordHoldDuration(newSettings.chordHoldDurationMs)
             repo.setBindings(newSettings.buttonBindings)
+            repo.setDetailedBindings(newSettings.detailedBindings)
             repo.setAudioPack(newSettings.audioPack)
             repo.setCursorStyle(newSettings.cursorStyle)
             repo.setCursorSize(newSettings.cursorSize)
             repo.setCursorColor(newSettings.cursorColor)
+            repo.setAutoHideTimeout(newSettings.autoHideTimeoutMs)
+            repo.setKeyboardWidthPercent(newSettings.keyboardWidthPercent)
+            repo.setKeyboardHeightPercent(newSettings.keyboardHeightPercent)
             
             Log.i(TAG, "Switched to profile: $deviceName ($deviceId)")
         }
@@ -394,6 +407,9 @@ class GamepadMouseService : AccessibilityService() {
         if (keyboardOverlay != null) return
         
         val kbView = KeyboardOverlayView(this)
+        kbView.widthPercent = settings.keyboardWidthPercent
+        kbView.heightPercent = settings.keyboardHeightPercent
+        val captureView = JoystickCaptureView(this, ::onJoystick)
         val kbLp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -414,6 +430,18 @@ class GamepadMouseService : AccessibilityService() {
         try {
             windowManager.addView(kbView, kbLp)
             keyboardOverlay = kbView
+            val captureLp = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT,
+            ).apply { gravity = Gravity.TOP or Gravity.START }
+            windowManager.addView(captureView, captureLp)
+            joystickCapture = captureView
+            captureView.post { captureView.requestFocus() }
             Log.i(TAG, "keyboard overlay added")
         } catch (t: Throwable) {
             Log.e(TAG, "addKeyboardOverlay failed", t)
@@ -423,6 +451,8 @@ class GamepadMouseService : AccessibilityService() {
     private fun removeKeyboardOverlay() {
         keyboardOverlay?.let { runCatching { windowManager.removeViewImmediate(it) } }
         keyboardOverlay = null
+        joystickCapture?.let { runCatching { windowManager.removeViewImmediate(it) } }
+        joystickCapture = null
     }
 
     // ---------------------------------------------------------------- buttons
@@ -455,7 +485,7 @@ class GamepadMouseService : AccessibilityService() {
                 }
                 KeyEvent.ACTION_UP -> {
                     // When user starts releasing buttons, capture what they had held
-                    if (heldForRecording.size >= 2 && _recordedChord.value == null) {
+                    if (heldForRecording.isNotEmpty() && _recordedChord.value == null) {
                         _recordedChord.value = heldForRecording.toSet()
                         Log.d(TAG, "Recorded chord: ${heldForRecording.toSet()}")
                         // Stop recording mode automatically so user can navigate UI
@@ -497,18 +527,38 @@ class GamepadMouseService : AccessibilityService() {
                     }
                 }
                 
-                if (_mode.value == ServiceMode.GAMEPAD) return false
                 if (_mode.value == ServiceMode.KEYBOARD) {
                     if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
                     handleKeyboardButtonDown(code)
                     return DefaultBindings.isGamepadKey(code)
                 }
-                // MOUSE mode
+
                 if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
-                handleButtonDown(code)
-                return DefaultBindings.isGamepadKey(code)
+                bindingMatcher.keyDown(code)
+                val modeBindings = s.detailedBindings.filter { it.appliesIn(_mode.value) }
+                bindingMatcher.matching(modeBindings, _mode.value).forEach { binding ->
+                    bindingHoldJobs[binding]?.cancel()
+                    if (binding.holdDurationMs <= 0L) {
+                        executeAction(binding.action)
+                        bindingMatcher.markFired(binding)
+                    } else {
+                        bindingHoldJobs[binding] = scope.launch {
+                            kotlinx.coroutines.delay(binding.holdDurationMs)
+                            if (bindingMatcher.isHeld(binding)) {
+                                executeAction(binding.action)
+                                bindingMatcher.markFired(binding)
+                            }
+                        }
+                    }
+                }
+                val consumedByBinding = modeBindings.any { code in it.keyCodes }
+                return if (_mode.value == ServiceMode.GAMEPAD) consumedByBinding else
+                    consumedByBinding || DefaultBindings.isGamepadKey(code)
             }
             KeyEvent.ACTION_UP -> {
+                bindingMatcher.keyUp(code)
+                bindingHoldJobs.filterKeys { code in it.keyCodes }.values.forEach { it.cancel() }
+                bindingHoldJobs.keys.removeAll { code in it.keyCodes }
                 if (isChordButton) {
                     heldChordButtons.remove(code)
                     // Cancel hold timer if user releases before duration
@@ -518,22 +568,25 @@ class GamepadMouseService : AccessibilityService() {
                     }
                 }
                 
-                // In GAMEPAD mode we pass everything through untouched
-                if (_mode.value == ServiceMode.GAMEPAD) return false
                 if (_mode.value == ServiceMode.KEYBOARD) {
                     handleKeyboardButtonUp(code)
                     return DefaultBindings.isGamepadKey(code)
                 }
-                // MOUSE mode
-                handleButtonUp(code)
-                return DefaultBindings.isGamepadKey(code)
+                val consumedByBinding = s.detailedBindings.any {
+                    it.appliesIn(_mode.value) && code in it.keyCodes
+                }
+                s.detailedBindings.filter {
+                    it.appliesIn(_mode.value) && code in it.keyCodes &&
+                        (it.action == MouseAction.SLOW || it.action == MouseAction.FAST)
+                }.forEach { heldModifiers.remove(it.action) }
+                return if (_mode.value == ServiceMode.GAMEPAD) consumedByBinding else
+                    consumedByBinding || DefaultBindings.isGamepadKey(code)
             }
         }
         return false
     }
 
-    private fun handleButtonDown(code: Int) {
-        val action = settings.buttonBindings[code] ?: dpadFallback(code) ?: return
+    private fun executeAction(action: MouseAction) {
         when (action) {
             MouseAction.TAP -> tapAtCursor(TAP_MS)
             MouseAction.LONG_PRESS -> tapAtCursor(LONG_PRESS_MS)
@@ -542,13 +595,11 @@ class GamepadMouseService : AccessibilityService() {
             MouseAction.RECENTS -> performGlobalAction(GLOBAL_ACTION_RECENTS)
             MouseAction.SLOW, MouseAction.FAST -> { heldModifiers.add(action); scheduleFrame() }
             MouseAction.TOGGLE_MODE -> toggleMode()
-            // System actions
             MouseAction.SCREENSHOT -> takeScreenshot()
             MouseAction.NOTIFICATIONS -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
             MouseAction.QUICK_SETTINGS -> performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
-            MouseAction.APP_PICKER -> performGlobalAction(GLOBAL_ACTION_RECENTS)  // Same as recents
+            MouseAction.APP_PICKER -> performGlobalAction(GLOBAL_ACTION_RECENTS)
             MouseAction.POWER_MENU -> performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
-            // Media controls
             MouseAction.MEDIA_PLAY_PAUSE -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
             MouseAction.MEDIA_NEXT -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
             MouseAction.MEDIA_PREVIOUS -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
@@ -559,42 +610,37 @@ class GamepadMouseService : AccessibilityService() {
             MouseAction.NONE -> Unit
         }
     }
-
-    private fun handleButtonUp(code: Int) {
-        val action = settings.buttonBindings[code] ?: return
-        if (action == MouseAction.SLOW || action == MouseAction.FAST) heldModifiers.remove(action)
-    }
     
     private fun handleKeyboardButtonDown(code: Int) {
         val kb = keyboardOverlay ?: return
-        when (code) {
-            KeyEvent.KEYCODE_DPAD_UP -> kb.moveSelection(-1, 0)
-            KeyEvent.KEYCODE_DPAD_DOWN -> kb.moveSelection(1, 0)
-            KeyEvent.KEYCODE_DPAD_LEFT -> kb.moveSelection(0, -1)
-            KeyEvent.KEYCODE_DPAD_RIGHT -> kb.moveSelection(0, 1)
-            KeyEvent.KEYCODE_BUTTON_A -> {
+        when (KeyboardInputRouter.commandFor(code)) {
+            KeyboardCommand.UP -> kb.moveSelection(-1, 0)
+            KeyboardCommand.DOWN -> kb.moveSelection(1, 0)
+            KeyboardCommand.LEFT -> kb.moveSelection(0, -1)
+            KeyboardCommand.RIGHT -> kb.moveSelection(0, 1)
+            KeyboardCommand.SELECT -> {
                 // Type the selected character
                 val char = kb.getCurrentSelectedKey()
                 typeText(char)
                 kb.currentText += char
             }
-            KeyEvent.KEYCODE_BUTTON_B -> {
+            KeyboardCommand.BACKSPACE -> {
                 // Backspace
                 if (kb.currentText.isNotEmpty()) {
                     sendKeyPress(KeyEvent.KEYCODE_DEL)
                     kb.currentText = kb.currentText.dropLast(1)
                 }
             }
-            KeyEvent.KEYCODE_BUTTON_X -> {
+            KeyboardCommand.SPACE -> {
                 // Space
                 typeText(" ")
                 kb.currentText += " "
             }
-            KeyEvent.KEYCODE_BUTTON_Y -> {
+            KeyboardCommand.SHIFT -> {
                 // Toggle shift (uppercase/lowercase)
                 kb.shiftEnabled = !kb.shiftEnabled
             }
-            KeyEvent.KEYCODE_BUTTON_L1 -> {
+            KeyboardCommand.PREVIOUS_LAYOUT -> {
                 // Previous layout
                 kb.currentLayout = when (kb.currentLayout) {
                     KeyboardOverlayView.KeyboardLayout.LETTERS -> KeyboardOverlayView.KeyboardLayout.SYMBOLS
@@ -602,7 +648,7 @@ class GamepadMouseService : AccessibilityService() {
                     KeyboardOverlayView.KeyboardLayout.SYMBOLS -> KeyboardOverlayView.KeyboardLayout.NUMBERS
                 }
             }
-            KeyEvent.KEYCODE_BUTTON_R1 -> {
+            KeyboardCommand.NEXT_LAYOUT -> {
                 // Next layout
                 kb.currentLayout = when (kb.currentLayout) {
                     KeyboardOverlayView.KeyboardLayout.LETTERS -> KeyboardOverlayView.KeyboardLayout.NUMBERS
@@ -610,15 +656,16 @@ class GamepadMouseService : AccessibilityService() {
                     KeyboardOverlayView.KeyboardLayout.SYMBOLS -> KeyboardOverlayView.KeyboardLayout.LETTERS
                 }
             }
-            KeyEvent.KEYCODE_BUTTON_START -> {
+            KeyboardCommand.ENTER -> {
                 // Enter
                 sendKeyPress(KeyEvent.KEYCODE_ENTER)
                 kb.currentText = ""  // Clear text display after enter
             }
-            KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BACK -> {
+            KeyboardCommand.EXIT -> {
                 // Exit keyboard mode
                 setMode(ServiceMode.MOUSE)
             }
+            KeyboardCommand.NONE -> Unit
         }
     }
     

@@ -12,6 +12,10 @@ import android.view.View
  * Shows QWERTY layout with highlighted selection.
  */
 class KeyboardOverlayView(context: Context) : View(context) {
+    var widthPercent: Float = 80f
+        set(value) { field = value.coerceIn(40f, 100f); invalidate() }
+    var heightPercent: Float = 45f
+        set(value) { field = value.coerceIn(25f, 80f); invalidate() }
     
     enum class KeyboardLayout { LETTERS, NUMBERS, SYMBOLS }
     
@@ -136,8 +140,14 @@ class KeyboardOverlayView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         
-        val w = width.toFloat()
-        val h = height.toFloat()
+        val screenW = width.toFloat()
+        val screenH = height.toFloat()
+        val w = screenW * widthPercent / 100f
+        val h = screenH * heightPercent / 100f
+        val left = (screenW - w) / 2f
+        val top = screenH - h
+        canvas.save()
+        canvas.translate(left, top)
         
         // Draw semi-transparent background
         canvas.drawRect(0f, 0f, w, h, bgPaint)
@@ -204,5 +214,6 @@ class KeyboardOverlayView(context: Context) : View(context) {
             h - 20,
             labelPaint.apply { textAlign = Paint.Align.CENTER }
         )
+        canvas.restore()
     }
 }

@@ -43,6 +43,10 @@ object DefaultBindings {
         KeyEvent.KEYCODE_BUTTON_THUMBL to MouseAction.HOME,
     )
 
+    val detailed: List<ButtonBinding> = buttons.map { (keyCode, action) ->
+        ButtonBinding(setOf(keyCode), action, setOf(BindingMode.MOUSE), 0L)
+    }
+
     /** Default chord that flips GAMEPAD ⇄ MOUSE: Start + Select held together. */
     val toggleChord: Set<Int> = setOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT)
 

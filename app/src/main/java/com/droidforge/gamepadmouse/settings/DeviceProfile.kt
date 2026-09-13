@@ -1,23 +1,18 @@
 package com.droidforge.gamepadmouse.settings
 
+import com.droidforge.gamepadmouse.input.BindingCodec
+import com.droidforge.gamepadmouse.input.ButtonBinding
+import com.droidforge.gamepadmouse.input.MouseAction
 import kotlinx.serialization.Serializable
 
-/**
- * A profile for a specific gamepad device.
- * Stores all settings associated with one controller.
- */
 @Serializable
 data class DeviceProfile(
-    val deviceId: String,              // Unique device identifier
-    val deviceName: String,            // Human-readable name
-    val settings: ProfileSettings,     // All the actual settings
-    val lastUsed: Long = 0L           // Timestamp for sorting
+    val deviceId: String,
+    val deviceName: String,
+    val settings: ProfileSettings,
+    val lastUsed: Long = 0L,
 )
 
-/**
- * Settings that can be saved per-profile.
- * Mirrors the main Settings class but serializable.
- */
 @Serializable
 data class ProfileSettings(
     val baseSpeedPxPerSec: Float = 900f,
@@ -30,18 +25,19 @@ data class ProfileSettings(
     val swapSticks: Boolean = false,
     val circularScroll: Boolean = false,
     val startInMouseMode: Boolean = true,
-    val toggleChord: List<Int> = listOf(96, 97),  // Set → List for serialization
+    val toggleChord: List<Int> = listOf(108, 109),
     val chordHoldDurationMs: Long = 0L,
-    val buttonBindings: Map<String, String> = emptyMap(),  // KeyCode → ActionName
+    val buttonBindings: Map<String, String> = emptyMap(),
+    val detailedBindings: String = "",
     val audioPack: String = "MINIMAL",
     val cursorStyle: String = "ARROW",
     val cursorSize: Float = 1.0f,
-    val cursorColor: Int = 0xFFFFFFFF.toInt()
+    val cursorColor: Int = 0xFFFFFFFF.toInt(),
+    val autoHideTimeoutMs: Long = 3000L,
+    val keyboardWidthPercent: Float = 80f,
+    val keyboardHeightPercent: Float = 45f,
 )
 
-/**
- * Convert Settings to ProfileSettings
- */
 fun Settings.toProfileSettings(): ProfileSettings = ProfileSettings(
     baseSpeedPxPerSec = baseSpeedPxPerSec,
     slowMultiplier = slowMultiplier,
@@ -55,34 +51,46 @@ fun Settings.toProfileSettings(): ProfileSettings = ProfileSettings(
     startInMouseMode = startInMouseMode,
     toggleChord = toggleChord.toList(),
     chordHoldDurationMs = chordHoldDurationMs,
-    buttonBindings = buttonBindings.mapKeys { it.key.toString() }
-        .mapValues { it.value.name },
+    buttonBindings = buttonBindings.mapKeys { it.key.toString() }.mapValues { it.value.name },
+    detailedBindings = BindingCodec.encode(detailedBindings),
     audioPack = audioPack,
     cursorStyle = cursorStyle,
     cursorSize = cursorSize,
-    cursorColor = cursorColor
+    cursorColor = cursorColor,
+    autoHideTimeoutMs = autoHideTimeoutMs,
+    keyboardWidthPercent = keyboardWidthPercent,
+    keyboardHeightPercent = keyboardHeightPercent,
 )
 
-/**
- * Convert ProfileSettings back to Settings
- */
-fun ProfileSettings.toSettings(): Settings = Settings(
-    baseSpeedPxPerSec = baseSpeedPxPerSec,
-    slowMultiplier = slowMultiplier,
-    fastMultiplier = fastMultiplier,
-    deadzone = deadzone,
-    curveExponent = curveExponent,
-    scrollStepPx = scrollStepPx,
-    invertScroll = invertScroll,
-    swapSticks = swapSticks,
-    circularScroll = circularScroll,
-    startInMouseMode = startInMouseMode,
-    toggleChord = toggleChord.toSet(),
-    chordHoldDurationMs = chordHoldDurationMs,
-    buttonBindings = buttonBindings.mapKeys { it.key.toInt() }
-        .mapValues { com.droidforge.gamepadmouse.input.MouseAction.valueOf(it.value) },
-    audioPack = audioPack,
-    cursorStyle = cursorStyle,
-    cursorSize = cursorSize,
-    cursorColor = cursorColor
-)
+fun ProfileSettings.toSettings(): Settings {
+    val legacy = buttonBindings.mapNotNull { (key, value) ->
+        runCatching { key.toInt() to MouseAction.valueOf(value) }.getOrNull()
+    }.toMap()
+    val migratedDetailed = if (detailedBindings.isBlank()) {
+        legacy.map { (key, action) -> ButtonBinding(setOf(key), action) }
+    } else BindingCodec.decode(detailedBindings)
+
+    return Settings(
+        baseSpeedPxPerSec = baseSpeedPxPerSec,
+        slowMultiplier = slowMultiplier,
+        fastMultiplier = fastMultiplier,
+        deadzone = deadzone,
+        curveExponent = curveExponent,
+        scrollStepPx = scrollStepPx,
+        invertScroll = invertScroll,
+        swapSticks = swapSticks,
+        circularScroll = circularScroll,
+        startInMouseMode = startInMouseMode,
+        toggleChord = toggleChord.toSet(),
+        chordHoldDurationMs = chordHoldDurationMs,
+        buttonBindings = legacy,
+        detailedBindings = migratedDetailed,
+        audioPack = audioPack,
+        cursorStyle = cursorStyle,
+        cursorSize = cursorSize,
+        cursorColor = cursorColor,
+        autoHideTimeoutMs = autoHideTimeoutMs,
+        keyboardWidthPercent = keyboardWidthPercent,
+        keyboardHeightPercent = keyboardHeightPercent,
+    )
+}
