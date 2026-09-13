@@ -245,6 +245,7 @@ class GamepadMouseService : AccessibilityService() {
 
     fun setMode(newMode: ServiceMode) {
         if (_mode.value == newMode) return
+        Log.d(TAG, "mode request ${_mode.value} -> $newMode")
         bindingMatcher.reset()
         bindingHoldJobs.values.forEach { it.cancel() }
         bindingHoldJobs.clear()
@@ -255,7 +256,7 @@ class GamepadMouseService : AccessibilityService() {
             ServiceMode.MOUSE -> {
                 removeKeyboardOverlay()
                 addOverlay()
-                scheduleFrame()  // start frame loop immediately so focus is claimed before any stick input
+                scheduleFrame()
                 audioManager.play(AudioCue.MODE_SWITCH_MOUSE)
             }
             ServiceMode.GAMEPAD -> {
@@ -269,13 +270,12 @@ class GamepadMouseService : AccessibilityService() {
                     ?: keyboardTargetNode
                 removeOverlay()
                 addKeyboardOverlay()
-                audioManager.play(AudioCue.MODE_SWITCH_MOUSE) // Reuse mouse sound for now
+                audioManager.play(AudioCue.MODE_SWITCH_MOUSE)
             }
         }
-        Log.i(TAG, "mode -> $newMode")
+        Log.d(TAG, "mode -> $newMode")
     }
     
-    // Public method for audio preview
     fun playAudioCue(cue: AudioCue) {
         audioManager.play(cue)
     }
@@ -454,6 +454,7 @@ class GamepadMouseService : AccessibilityService() {
         kbView.showSystemKeys = settings.keyboardShowSystemKeys
         kbView.keyboardColor = settings.keyboardColor
         kbView.onKeyPressed = ::activateKeyboardKey
+        kbView.audioManager = audioManager
         val captureView = JoystickCaptureView(this, ::onJoystick, ::onCapturedKeyEvent)
         val keyboardWidth = (displayW * settings.keyboardWidthPercent / 100f).toInt()
         val keyboardHeight = (displayH * settings.keyboardHeightPercent / 100f).toInt()
@@ -752,11 +753,26 @@ class GamepadMouseService : AccessibilityService() {
     private fun activateKeyboardKey(key: String) {
         val kb = keyboardOverlay ?: return
         when (key) {
-            KeyboardOverlayView.KEY_SHIFT -> kb.shiftEnabled = !kb.shiftEnabled
-            KeyboardOverlayView.KEY_CAPS -> kb.capsLockEnabled = !kb.capsLockEnabled
-            KeyboardOverlayView.KEY_BACKSPACE -> backspaceText(kb)
-            KeyboardOverlayView.KEY_SPACE -> appendText(kb, " ")
-            KeyboardOverlayView.KEY_ENTER -> appendText(kb, "\n")
+            KeyboardOverlayView.KEY_SHIFT -> {
+                kb.shiftEnabled = !kb.shiftEnabled
+                audioManager.play(AudioCue.KEYBOARD_TAP)
+            }
+            KeyboardOverlayView.KEY_CAPS -> {
+                kb.capsLockEnabled = !kb.capsLockEnabled
+                audioManager.play(AudioCue.KEYBOARD_TAP)
+            }
+            KeyboardOverlayView.KEY_BACKSPACE -> {
+                backspaceText(kb)
+                audioManager.play(AudioCue.KEYBOARD_TAP)
+            }
+            KeyboardOverlayView.KEY_SPACE -> {
+                appendText(kb, " ")
+                audioManager.play(AudioCue.KEYBOARD_TAP)
+            }
+            KeyboardOverlayView.KEY_ENTER -> {
+                appendText(kb, "\n")
+                audioManager.play(AudioCue.KEYBOARD_ENTER)
+            }
             KeyboardOverlayView.KEY_POSITION -> {
                 scope.launch { repo.setKeyboardAtTop(!settings.keyboardAtTop) }
                 setMode(ServiceMode.MOUSE)
@@ -769,13 +785,15 @@ class GamepadMouseService : AccessibilityService() {
             else -> {
                 appendText(kb, kb.displayCharacter(key))
                 kb.consumeOneShotShift()
+                audioManager.play(AudioCue.KEYBOARD_TAP)
             }
         }
     }
 
     private fun appendText(kb: KeyboardOverlayView, text: String) {
         val updated = kb.currentText + text
-        if (setFocusedText(updated)) kb.currentText = updated
+        kb.currentText = updated
+        setFocusedText(updated)
     }
 
     private fun backspaceText(kb: KeyboardOverlayView) {

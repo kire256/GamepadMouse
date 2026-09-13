@@ -22,13 +22,14 @@ Phase 2 input customization and keyboard-mode iteration.
 ## Keyboard mode controls
 
 - D-pad: move selection
-- A: type selected key
-- B: backspace
-- X: space
+- B: type selected key (press)
+- A: hide keyboard (return to mouse)
+- X: backspace
 - Y: shift
 - LB/RB: change layout
 - Start: enter
 - Select/Back: return to mouse mode
+- Touch: finger-tap any key
 
 ## Verification
 
@@ -56,6 +57,7 @@ Phase 2 input customization and keyboard-mode iteration.
 - New binding dialogs clear previous recording state and wait 250 ms before accepting controller input.
 - Existing installations automatically gain keyboard defaults: B = press selected key, X = backspace, A = hide.
 - Added three transparent image cursor styles from `C:/AI/Apps/arrows`: Blue Arrow, Blue Target, and 3D Blue Pointer.
+- Image cursor assets are grayscale with runtime tinting from the selected cursor color.
 
 ## Next testing
 

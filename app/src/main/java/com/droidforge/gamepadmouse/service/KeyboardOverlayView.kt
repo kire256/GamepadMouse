@@ -6,11 +6,14 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View
+import com.droidforge.gamepadmouse.audio.AudioCue
+import com.droidforge.gamepadmouse.audio.AudioManager
 
 class KeyboardOverlayView(context: Context) : View(context) {
     enum class KeyboardLayout { LETTERS, NUMBERS, SYMBOLS }
 
     var onKeyPressed: ((String) -> Unit)? = null
+    var audioManager: AudioManager? = null
 
     companion object {
         const val KEY_SHIFT = "⇧"
@@ -103,9 +106,13 @@ class KeyboardOverlayView(context: Context) : View(context) {
         selectedCol = selectedCol.coerceIn(0, rows[selectedRow].lastIndex)
     }
 
-    fun keyAt(x: Float, y: Float): String? {
-        val w = width.toFloat()
-        val h = height.toFloat()
+    fun keyAt(screenX: Float, screenY: Float): String? {
+        val w = width.toFloat() * widthPercent / 100f
+        val h = height.toFloat() * heightPercent / 100f
+        val left = (width.toFloat() - w) / 2f
+        val top = if (atTop) 0f else height.toFloat() - h
+        val x = screenX - left
+        val y = screenY - top
         if (x !in 0f..w || y !in 0f..h) return null
         val textAreaHeight = h * 0.14f
         val keyboardTop = textAreaHeight + 8f
@@ -126,9 +133,14 @@ class KeyboardOverlayView(context: Context) : View(context) {
     override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
         if (event.action == android.view.MotionEvent.ACTION_UP) {
             keyAt(event.x, event.y)?.let { onKeyPressed?.invoke(it) }
+            playClickSound()
             performClick()
         }
         return true
+    }
+
+    fun playClickSound() {
+        audioManager?.play(AudioCue.KEYBOARD_TAP)
     }
 
     override fun performClick(): Boolean {

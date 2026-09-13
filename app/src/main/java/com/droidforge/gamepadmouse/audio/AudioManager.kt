@@ -61,6 +61,12 @@ class AudioManager(private val context: Context) {
                     loadedSounds[AudioCue.SCROLL] = mutableListOf(
                         pool.load(context, R.raw.mechanical_tap2, 1)
                     )
+                    loadedSounds[AudioCue.KEYBOARD_TAP] = mutableListOf(
+                        pool.load(context, R.raw.keyboard_tap, 1)
+                    )
+                    loadedSounds[AudioCue.KEYBOARD_ENTER] = mutableListOf(
+                        pool.load(context, R.raw.keyboard_return, 1)
+                    )
                 }
                 AudioPack.RETRO -> {
                     // Load retro sound files
@@ -78,6 +84,12 @@ class AudioManager(private val context: Context) {
                     )
                     loadedSounds[AudioCue.SCROLL] = mutableListOf(
                         pool.load(context, R.raw.retro_tap, 1)
+                    )
+                    loadedSounds[AudioCue.KEYBOARD_TAP] = mutableListOf(
+                        pool.load(context, R.raw.keyboard_tap, 1)
+                    )
+                    loadedSounds[AudioCue.KEYBOARD_ENTER] = mutableListOf(
+                        pool.load(context, R.raw.keyboard_return, 1)
                     )
                 }
                 AudioPack.SCIFI -> {
@@ -98,6 +110,12 @@ class AudioManager(private val context: Context) {
                     )
                     loadedSounds[AudioCue.SCROLL] = mutableListOf(
                         pool.load(context, R.raw.scifi_tap2, 1)
+                    )
+                    loadedSounds[AudioCue.KEYBOARD_TAP] = mutableListOf(
+                        pool.load(context, R.raw.keyboard_tap, 1)
+                    )
+                    loadedSounds[AudioCue.KEYBOARD_ENTER] = mutableListOf(
+                        pool.load(context, R.raw.keyboard_return, 1)
                     )
                 }
                 AudioPack.CUSTOM -> {
@@ -145,6 +163,8 @@ class AudioManager(private val context: Context) {
                     AudioCue.TAP -> android.media.ToneGenerator.TONE_DTMF_1  // Sharp click
                     AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_DTMF_2
                     AudioCue.SCROLL -> android.media.ToneGenerator.TONE_DTMF_0
+                    AudioCue.KEYBOARD_TAP -> android.media.ToneGenerator.TONE_DTMF_1
+                    AudioCue.KEYBOARD_ENTER -> android.media.ToneGenerator.TONE_DTMF_2
                 }
             }
             AudioPack.RETRO -> {
@@ -155,6 +175,8 @@ class AudioManager(private val context: Context) {
                     AudioCue.TAP -> android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD
                     AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_CDMA_KEYPAD_VOLUME_KEY_LITE
                     AudioCue.SCROLL -> android.media.ToneGenerator.TONE_CDMA_PIP
+                    AudioCue.KEYBOARD_TAP -> android.media.ToneGenerator.TONE_CDMA_KEYPAD_VOLUME_KEY_LITE
+                    AudioCue.KEYBOARD_ENTER -> android.media.ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD
                 }
             }
             AudioPack.SCIFI -> {
@@ -165,6 +187,8 @@ class AudioManager(private val context: Context) {
                     AudioCue.TAP -> android.media.ToneGenerator.TONE_CDMA_MED_L
                     AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_CDMA_HIGH_SS
                     AudioCue.SCROLL -> android.media.ToneGenerator.TONE_CDMA_EMERGENCY_RINGBACK
+                    AudioCue.KEYBOARD_TAP -> android.media.ToneGenerator.TONE_CDMA_MED_L
+                    AudioCue.KEYBOARD_ENTER -> android.media.ToneGenerator.TONE_CDMA_HIGH_L
                 }
             }
             else -> {
@@ -175,6 +199,8 @@ class AudioManager(private val context: Context) {
                     AudioCue.TAP -> android.media.ToneGenerator.TONE_PROP_ACK
                     AudioCue.LONG_PRESS -> android.media.ToneGenerator.TONE_PROP_ACK
                     AudioCue.SCROLL -> android.media.ToneGenerator.TONE_CDMA_ABBR_ALERT
+                    AudioCue.KEYBOARD_TAP -> android.media.ToneGenerator.TONE_PROP_ACK
+                    AudioCue.KEYBOARD_ENTER -> android.media.ToneGenerator.TONE_PROP_BEEP2
                 }
             }
         }
@@ -211,5 +237,7 @@ enum class AudioCue {
     MODE_SWITCH_GAMEPAD,
     TAP,
     LONG_PRESS,
-    SCROLL
+    SCROLL,
+    KEYBOARD_TAP,
+    KEYBOARD_ENTER
 }
