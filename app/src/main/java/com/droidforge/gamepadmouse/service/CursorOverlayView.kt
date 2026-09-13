@@ -165,36 +165,32 @@ class CursorOverlayView(context: Context) : View(context) {
     }
     
     private fun drawPlay(canvas: Canvas, x: Float, y: Float) {
-        // Modern play button style (triangular with rounded left side)
+        // Rounded triangle cursor (all corners rounded)
         val s = sizePx * cursorSizeMultiplier
         arrow.reset()
         
-        // Vertical left side with rounded corners
-        arrow.moveTo(x, y + s * 0.15f)  // Start slightly down from top
-        arrow.lineTo(x, y + s * 0.85f)  // Vertical line
+        // Start at top
+        arrow.moveTo(x + s * 0.15f, y)
         
-        // Rounded bottom-left corner
+        // Top to right point (with curve)
         arrow.cubicTo(
-            x, y + s * 0.95f,
-            x + s * 0.05f, y + s,
-            x + s * 0.15f, y + s
-        )
-        
-        // Bottom edge with slight inward curve
-        arrow.cubicTo(
-            x + s * 0.35f, y + s * 0.92f,
-            x + s * 0.55f, y + s * 0.75f,
+            x + s * 0.4f, y,
+            x + s * 0.6f, y + s * 0.3f,
             x + s * 0.75f, y + s * 0.5f  // Sharp right point
         )
         
-        // Top edge
-        arrow.lineTo(x + s * 0.15f, y)
-        
-        // Rounded top-left corner
+        // Right point to bottom (with curve)
         arrow.cubicTo(
-            x + s * 0.05f, y,
-            x, y + s * 0.05f,
-            x, y + s * 0.15f
+            x + s * 0.6f, y + s * 0.7f,
+            x + s * 0.4f, y + s,
+            x + s * 0.15f, y + s
+        )
+        
+        // Bottom to top-left (rounded corner)
+        arrow.cubicTo(
+            x, y + s * 0.9f,
+            x, y + s * 0.1f,
+            x + s * 0.15f, y
         )
         arrow.close()
         
