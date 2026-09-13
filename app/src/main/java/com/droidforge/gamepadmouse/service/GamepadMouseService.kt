@@ -194,12 +194,17 @@ class GamepadMouseService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // Detect manual finger taps to hide cursor
-        if (event != null && settings.hideOnTap && _mode.value == ServiceMode.MOUSE) {
-            when (event.eventType) {
-                AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
-                AccessibilityEvent.TYPE_VIEW_CLICKED -> {
-                    // User manually tapped the screen
-                    hideCursor()
+        if (event != null && _mode.value == ServiceMode.MOUSE) {
+            Log.d(TAG, "Accessibility event: ${AccessibilityEvent.eventTypeToString(event.eventType)}")
+            
+            if (settings.hideOnTap) {
+                when (event.eventType) {
+                    AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
+                    AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                        // User manually tapped the screen
+                        Log.i(TAG, "Manual tap detected - hiding cursor")
+                        hideCursor()
+                    }
                 }
             }
         }
