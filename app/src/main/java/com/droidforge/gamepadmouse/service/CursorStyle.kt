@@ -6,5 +6,8 @@ enum class CursorStyle(val label: String) {
     CROSSHAIR("Crosshair"),
     CIRCLE("Circle"),
     POINTER("Pointer Hand"),
-    TRIANGLE("Rounded Triangle")
+    TRIANGLE("Rounded Triangle"),
+    BLUE_ARROW("Blue Arrow (Image)"),
+    TARGET("Blue Target (Image)"),
+    POINTER_3D("3D Blue Pointer (Image)")
 }

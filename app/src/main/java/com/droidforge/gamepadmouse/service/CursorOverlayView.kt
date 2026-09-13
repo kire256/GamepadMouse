@@ -5,7 +5,11 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.RectF
 import android.view.View
+import com.droidforge.gamepadmouse.R
 
 /**
  * Full-screen, non-focusable, non-touchable overlay that ONLY draws the cursor.
@@ -60,6 +64,9 @@ class CursorOverlayView(context: Context) : View(context) {
         color = 0x55000000; style = Paint.Style.FILL
     }
     private val arrow = Path()
+    private val blueArrowBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.cursor_blue_arrow) }
+    private val targetBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.cursor_target) }
+    private val pointer3dBitmap: Bitmap by lazy { BitmapFactory.decodeResource(resources, R.drawable.cursor_3d_pointer) }
 
     init {
         isFocusable = false
@@ -96,7 +103,17 @@ class CursorOverlayView(context: Context) : View(context) {
             CursorStyle.CIRCLE -> drawCircle(canvas, cursorX, cursorY)
             CursorStyle.POINTER -> drawPointer(canvas, cursorX, cursorY)
             CursorStyle.TRIANGLE -> drawTriangle(canvas, cursorX, cursorY)
+            CursorStyle.BLUE_ARROW -> drawBitmapCursor(canvas, blueArrowBitmap, cursorX, cursorY, false)
+            CursorStyle.TARGET -> drawBitmapCursor(canvas, targetBitmap, cursorX, cursorY, true)
+            CursorStyle.POINTER_3D -> drawBitmapCursor(canvas, pointer3dBitmap, cursorX, cursorY, false)
         }
+    }
+
+    private fun drawBitmapCursor(canvas: Canvas, bitmap: Bitmap, x: Float, y: Float, centered: Boolean) {
+        val size = sizePx * 2.2f * cursorSizeMultiplier
+        val left = if (centered) x - size / 2f else x
+        val top = if (centered) y - size / 2f else y
+        canvas.drawBitmap(bitmap, null, RectF(left, top, left + size, top + size), null)
     }
     
     private fun drawArrow(canvas: Canvas, x: Float, y: Float) {
