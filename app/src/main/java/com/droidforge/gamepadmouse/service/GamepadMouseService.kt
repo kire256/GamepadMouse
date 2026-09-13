@@ -610,6 +610,7 @@ class GamepadMouseService : AccessibilityService() {
             val cy = ov.cursorY.coerceIn(0f, h)
             Log.d(TAG, "scroll swipe dist=$scrollDist from ($cx,$cy) scrollY=$scrollY")
             swipeScroll(cx, cy, cx, (cy + scrollDist).coerceIn(0f, h), SCROLL_TICK_MS - 20)
+            showCursor()  // Show cursor on scroll
         }
 
         val keepGoing = true  // keep loop alive in mouse mode so joystick focus is maintained
@@ -627,6 +628,7 @@ class GamepadMouseService : AccessibilityService() {
         val ov = overlay ?: return
         val path = Path().apply { moveTo(ov.cursorX, ov.cursorY) }
         dispatchTap(GestureDescription.StrokeDescription(path, 0, durationMs))
+        showCursor()  // Show cursor on button action (before hiding on tap)
         if (durationMs <= TAP_MS) {
             audioManager.play(AudioCue.TAP)
         } else {
