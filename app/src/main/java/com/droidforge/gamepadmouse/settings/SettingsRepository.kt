@@ -40,6 +40,10 @@ data class Settings(
     val autoHideTimeoutMs: Long = 3000L,
     val keyboardWidthPercent: Float = 80f,
     val keyboardHeightPercent: Float = 45f,
+    val keyboardAtTop: Boolean = false,
+    val keyboardShowNumberRow: Boolean = true,
+    val keyboardShowSystemKeys: Boolean = true,
+    val keyboardColor: Int = 0xFF202124.toInt(),
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gamepad_mouse")
@@ -68,6 +72,10 @@ class SettingsRepository(private val context: Context) {
         val AUTO_HIDE_TIMEOUT = longPreferencesKey("auto_hide_timeout_ms")
         val KEYBOARD_WIDTH = floatPreferencesKey("keyboard_width_percent")
         val KEYBOARD_HEIGHT = floatPreferencesKey("keyboard_height_percent")
+        val KEYBOARD_AT_TOP = booleanPreferencesKey("keyboard_at_top")
+        val KEYBOARD_NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
+        val KEYBOARD_SYSTEM_KEYS = booleanPreferencesKey("keyboard_system_keys")
+        val KEYBOARD_COLOR = intPreferencesKey("keyboard_color")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
@@ -103,6 +111,10 @@ class SettingsRepository(private val context: Context) {
             autoHideTimeoutMs = p[Keys.AUTO_HIDE_TIMEOUT] ?: 3000L,
             keyboardWidthPercent = p[Keys.KEYBOARD_WIDTH] ?: 80f,
             keyboardHeightPercent = p[Keys.KEYBOARD_HEIGHT] ?: 45f,
+            keyboardAtTop = p[Keys.KEYBOARD_AT_TOP] ?: false,
+            keyboardShowNumberRow = p[Keys.KEYBOARD_NUMBER_ROW] ?: true,
+            keyboardShowSystemKeys = p[Keys.KEYBOARD_SYSTEM_KEYS] ?: true,
+            keyboardColor = p[Keys.KEYBOARD_COLOR] ?: 0xFF202124.toInt(),
         )
     }
 
@@ -129,6 +141,10 @@ class SettingsRepository(private val context: Context) {
     suspend fun setAutoHideTimeout(ms: Long) = context.dataStore.edit { it[Keys.AUTO_HIDE_TIMEOUT] = ms }
     suspend fun setKeyboardWidthPercent(value: Float) = context.dataStore.edit { it[Keys.KEYBOARD_WIDTH] = value.coerceIn(40f, 100f) }
     suspend fun setKeyboardHeightPercent(value: Float) = context.dataStore.edit { it[Keys.KEYBOARD_HEIGHT] = value.coerceIn(25f, 80f) }
+    suspend fun setKeyboardAtTop(value: Boolean) = context.dataStore.edit { it[Keys.KEYBOARD_AT_TOP] = value }
+    suspend fun setKeyboardShowNumberRow(value: Boolean) = context.dataStore.edit { it[Keys.KEYBOARD_NUMBER_ROW] = value }
+    suspend fun setKeyboardShowSystemKeys(value: Boolean) = context.dataStore.edit { it[Keys.KEYBOARD_SYSTEM_KEYS] = value }
+    suspend fun setKeyboardColor(value: Int) = context.dataStore.edit { it[Keys.KEYBOARD_COLOR] = value }
 
     companion object {
         fun encodeBindings(b: Map<Int, MouseAction>): String =

@@ -36,6 +36,10 @@ data class ProfileSettings(
     val autoHideTimeoutMs: Long = 3000L,
     val keyboardWidthPercent: Float = 80f,
     val keyboardHeightPercent: Float = 45f,
+    val keyboardAtTop: Boolean = false,
+    val keyboardShowNumberRow: Boolean = true,
+    val keyboardShowSystemKeys: Boolean = true,
+    val keyboardColor: Int = 0xFF202124.toInt(),
 )
 
 fun Settings.toProfileSettings(): ProfileSettings = ProfileSettings(
@@ -60,6 +64,10 @@ fun Settings.toProfileSettings(): ProfileSettings = ProfileSettings(
     autoHideTimeoutMs = autoHideTimeoutMs,
     keyboardWidthPercent = keyboardWidthPercent,
     keyboardHeightPercent = keyboardHeightPercent,
+    keyboardAtTop = keyboardAtTop,
+    keyboardShowNumberRow = keyboardShowNumberRow,
+    keyboardShowSystemKeys = keyboardShowSystemKeys,
+    keyboardColor = keyboardColor,
 )
 
 fun ProfileSettings.toSettings(): Settings {
@@ -92,5 +100,9 @@ fun ProfileSettings.toSettings(): Settings {
         autoHideTimeoutMs = autoHideTimeoutMs,
         keyboardWidthPercent = keyboardWidthPercent,
         keyboardHeightPercent = keyboardHeightPercent,
+        keyboardAtTop = keyboardAtTop,
+        keyboardShowNumberRow = keyboardShowNumberRow,
+        keyboardShowSystemKeys = keyboardShowSystemKeys,
+        keyboardColor = keyboardColor,
     )
 }

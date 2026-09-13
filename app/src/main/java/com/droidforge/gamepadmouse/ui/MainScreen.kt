@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -206,6 +207,8 @@ private fun SettingsTab(
     repo: SettingsRepository,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
+    var keyboardTestText by remember { mutableStateOf("") }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -340,6 +343,38 @@ private fun SettingsTab(
             range = 25f..80f,
             format = { "${it.roundToInt()}%" },
         ) { scope.launch { repo.setKeyboardHeightPercent(it) } }
+        SwitchRow("Position keyboard at top", settings.keyboardAtTop) { scope.launch { repo.setKeyboardAtTop(it) } }
+        SwitchRow("Show number row", settings.keyboardShowNumberRow) { scope.launch { repo.setKeyboardShowNumberRow(it) } }
+        SwitchRow("Show system keys", settings.keyboardShowSystemKeys) { scope.launch { repo.setKeyboardShowSystemKeys(it) } }
+        Text("Keyboard color", style = MaterialTheme.typography.bodyMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            listOf(
+                0xFF202124.toInt() to "Dark",
+                0xFF263238.toInt() to "Blue gray",
+                0xFF3E2723.toInt() to "Brown",
+                0xFF1B5E20.toInt() to "Green",
+            ).forEach { (color, label) ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable { scope.launch { repo.setKeyboardColor(color) } },
+                ) {
+                    Box(
+                        Modifier.width(52.dp).height(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(color))
+                            .then(if (settings.keyboardColor == color) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier),
+                    )
+                    Text(label, style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+        OutlinedTextField(
+            value = keyboardTestText,
+            onValueChange = { keyboardTestText = it },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Keyboard input test") },
+            placeholder = { Text("Activate Keyboard Mode and type here") },
+        )
         
         Spacer(Modifier.height(16.dp))
         Text("Movement", style = MaterialTheme.typography.titleMedium)
