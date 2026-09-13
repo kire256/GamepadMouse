@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -71,7 +70,7 @@ fun getActionIcon(action: MouseAction): ImageVector = when (action) {
     MouseAction.VOLUME_UP -> Icons.Filled.VolumeUp
     MouseAction.VOLUME_DOWN -> Icons.Filled.VolumeDown
     MouseAction.VOLUME_MUTE -> Icons.Filled.VolumeMute
-    MouseAction.KEYBOARD_MODE -> Icons.Filled.Create
+    MouseAction.KEYBOARD_MODE -> Icons.Filled.Menu
 }
 
 // Icon mapping for buttons - simple text glyphs

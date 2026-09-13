@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.pm.PackageInfoCompat
 import com.droidforge.gamepadmouse.R
 import com.droidforge.gamepadmouse.input.ServiceMode
 import com.droidforge.gamepadmouse.service.GamepadMouseService
@@ -146,6 +147,14 @@ private fun StatusTab(
     onEnable: () -> Unit,
     onToggleMode: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val versionLabel = remember(context.packageName) {
+        val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        val versionName = packageInfo.versionName ?: "unknown"
+        val versionCode = PackageInfoCompat.getLongVersionCode(packageInfo)
+        "Version $versionName ($versionCode)"
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -153,7 +162,14 @@ private fun StatusTab(
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+        Column {
+            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+            Text(
+                versionLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         StatusCard(
             running = running,
