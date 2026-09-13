@@ -444,7 +444,11 @@ private fun AdvancedTab(
                                                                 // Save current pack
                                                                 val originalPack = settings.audioPack
                                                                 
-                                                                // Temporarily switch to preview pack
+                                                                // Temporarily disable audio to avoid click sound from the button press
+                                                                repo.setAudioPack("SILENT")
+                                                                kotlinx.coroutines.delay(50) // Let it take effect
+                                                                
+                                                                // Now switch to preview pack
                                                                 repo.setAudioPack(pack)
                                                                 kotlinx.coroutines.delay(50) // Short delay for settings update
                                                                 
