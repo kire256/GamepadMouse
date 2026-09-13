@@ -49,6 +49,9 @@ Phase 2 input customization and keyboard-mode iteration.
 - Keyboard-mode defaults are B = press selected key and A = hide; keyboard press/move/hide are bindable actions.
 - Keyboard overlay is a bounded touchable window, allowing finger taps on keys without blocking touches outside it.
 - Binding list includes a visible scroll hint panel.
+- Version 7 is installed on the Fold; Settings are separated into Mouse, Keyboard, Bindings, and General navigation tabs.
+- Keyboard defaults use B to press and A to hide, with bindable keyboard press/move/hide actions and a dedicated Keyboard binding mode.
+- The bounded keyboard overlay accepts finger taps while leaving the rest of the screen touchable.
 
 ## Next testing
 
