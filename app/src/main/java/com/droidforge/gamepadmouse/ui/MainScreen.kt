@@ -263,6 +263,7 @@ private fun AdvancedTab(
 ) {
     val context = LocalContext.current
     var showChordRecorder by remember { mutableStateOf(false) }
+    var showCustomSoundsDialog by remember { mutableStateOf(false) }
     
     Column(
         modifier = modifier
@@ -485,12 +486,7 @@ private fun AdvancedTab(
                         if (pack == "CUSTOM") {
                             androidx.compose.material3.OutlinedButton(
                                 onClick = {
-                                    // TODO: Launch file picker for custom sounds
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "Custom sound file picker coming soon!",
-                                        android.widget.Toast.LENGTH_SHORT
-                                    ).show()
+                                    showCustomSoundsDialog = true
                                 },
                                 modifier = Modifier.padding(start = 8.dp)
                             ) {
@@ -520,6 +516,21 @@ private fun AdvancedTab(
                     repo.setToggleChord(chord)
                 }
                 showChordRecorder = false
+            }
+        )
+    }
+    
+    if (showCustomSoundsDialog) {
+        CustomSoundsDialog(
+            onDismiss = { showCustomSoundsDialog = false },
+            onSoundsSelected = { soundUris ->
+                // TODO: Save custom sound URIs to settings and load them in AudioManager
+                android.widget.Toast.makeText(
+                    context,
+                    "Custom sounds saved! (Loading custom files will be implemented next)",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+                showCustomSoundsDialog = false
             }
         )
     }
