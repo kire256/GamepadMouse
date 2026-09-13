@@ -302,6 +302,18 @@ private fun SettingsTab(
             }
         }
         
+        // Cursor auto-hide settings
+        SwitchRow("Hide cursor on tap", settings.hideOnTap) { scope.launch { repo.setHideOnTap(it) } }
+        
+        SliderRow(
+            label = "Auto-hide timeout",
+            value = settings.autoHideTimeoutMs.toFloat(),
+            range = 0f..10000f,
+            format = { ms -> if (ms == 0f) "Disabled" else "${(ms / 1000).roundToInt()}s" },
+        ) { scope.launch { repo.setAutoHideTimeout(it.toLong()) } }
+        
+        Spacer(Modifier.height(16.dp))
+        Text("Movement", style = MaterialTheme.typography.titleMedium)
         SliderRow(
             label = "Base speed",
             value = settings.baseSpeedPxPerSec,

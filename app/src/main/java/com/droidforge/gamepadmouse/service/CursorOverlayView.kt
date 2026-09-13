@@ -37,6 +37,14 @@ class CursorOverlayView(context: Context) : View(context) {
             fill.color = value
             invalidate()
         }
+    
+    var isVisible = true
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
 
     private val sizePx = context.resources.displayMetrics.density * 22f
 
@@ -79,6 +87,8 @@ class CursorOverlayView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        if (!isVisible) return  // Don't draw if hidden
+        
         when (cursorStyle) {
             CursorStyle.ARROW -> drawArrow(canvas, cursorX, cursorY)
             CursorStyle.DOT -> drawDot(canvas, cursorX, cursorY)

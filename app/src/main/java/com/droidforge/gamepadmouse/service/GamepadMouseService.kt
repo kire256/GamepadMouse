@@ -24,6 +24,9 @@ import com.droidforge.gamepadmouse.input.ServiceMode
 import com.droidforge.gamepadmouse.input.StickProcessor
 import com.droidforge.gamepadmouse.settings.Settings
 import com.droidforge.gamepadmouse.settings.SettingsRepository
+import com.droidforge.gamepadmouse.settings.ProfileManager
+import com.droidforge.gamepadmouse.settings.toProfileSettings
+import com.droidforge.gamepadmouse.settings.toSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -56,6 +59,9 @@ class GamepadMouseService : AccessibilityService() {
 
         private val _controllerConnected = MutableStateFlow(false)
         val controllerConnected: StateFlow<Boolean> = _controllerConnected.asStateFlow()
+        
+        private val _currentDevice = MutableStateFlow<String?>(null)
+        val currentDevice: StateFlow<String?> = _currentDevice.asStateFlow()
 
         // Chord recording state
         private val _recordingChord = MutableStateFlow(false)
@@ -84,10 +90,17 @@ class GamepadMouseService : AccessibilityService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var repo: SettingsRepository
+    private lateinit var profileManager: ProfileManager
     @Volatile private var settings = Settings()
+    @Volatile private var currentDeviceId: String? = null
+    @Volatile private var currentDeviceName: String? = null
 
     private lateinit var windowManager: WindowManager
     private var overlay: CursorOverlayView? = null
+    
+    // Cursor auto-hide timer
+    private var hideJob: kotlinx.coroutines.Job? = null
+    private var lastCursorActivity = 0L
     private var joystickCapture: JoystickCaptureView? = null
     private var displayW = 1080f
     private var displayH = 1920f
@@ -125,6 +138,7 @@ class GamepadMouseService : AccessibilityService() {
         displayW = dm.widthPixels.toFloat()
         displayH = dm.heightPixels.toFloat()
         repo = SettingsRepository(this)
+        profileManager = com.droidforge.gamepadmouse.settings.ProfileManager(this)
         audioManager = com.droidforge.gamepadmouse.audio.AudioManager(this)
 
         scope.launch {
@@ -210,6 +224,90 @@ class GamepadMouseService : AccessibilityService() {
     fun playAudioCue(cue: AudioCue) {
         audioManager.play(cue)
     }
+    
+    // Cursor visibility management
+    private fun showCursor() {
+        overlay?.isVisible = true
+        resetAutoHideTimer()
+    }
+    
+    private fun hideCursor() {
+        overlay?.isVisible = false
+        hideJob?.cancel()
+        hideJob = null
+    }
+    
+    private fun resetAutoHideTimer() {
+        val timeout = settings.autoHideTimeoutMs
+        if (timeout <= 0) return  // Disabled
+        
+        lastCursorActivity = System.currentTimeMillis()
+        hideJob?.cancel()
+        hideJob = scope.launch {
+            kotlinx.coroutines.delay(timeout)
+            // Check if there was activity during the delay
+            if (System.currentTimeMillis() - lastCursorActivity >= timeout) {
+                hideCursor()
+            }
+        }
+    }
+    
+    // Device detection and profile switching
+    private fun detectAndSwitchDevice(androidDeviceId: Int) {
+        val device = InputDevice.getDevice(androidDeviceId) ?: return
+        val deviceId = "device_${device.descriptor.hashCode()}"
+        val deviceName = device.name ?: "Unknown Controller"
+        
+        // If it's the same device, just update last-used timestamp
+        if (currentDeviceId == deviceId) {
+            scope.launch {
+                profileManager.touchProfile(deviceId)
+            }
+            return
+        }
+        
+        // New device detected - switch profile
+        currentDeviceId = deviceId
+        currentDeviceName = deviceName
+        _currentDevice.value = deviceName
+        
+        scope.launch {
+            // Get or create profile for this device
+            val profile = profileManager.getOrCreateProfile(
+                deviceId = deviceId,
+                deviceName = deviceName,
+                defaultSettings = settings.toProfileSettings()
+            )
+            
+            // Set as active device
+            profileManager.setActiveDevice(deviceId)
+            
+            // Load profile settings into current settings
+            val newSettings = profile.settings.toSettings()
+            
+            // Apply each setting individually through the repository
+            // This ensures proper persistence and reactivity
+            repo.setBaseSpeed(newSettings.baseSpeedPxPerSec)
+            repo.setSlowMultiplier(newSettings.slowMultiplier)
+            repo.setFastMultiplier(newSettings.fastMultiplier)
+            repo.setDeadzone(newSettings.deadzone)
+            repo.setCurveExponent(newSettings.curveExponent)
+            repo.setScrollStep(newSettings.scrollStepPx)
+            repo.setInvertScroll(newSettings.invertScroll)
+            repo.setSwapSticks(newSettings.swapSticks)
+            repo.setCircularScroll(newSettings.circularScroll)
+            repo.setStartInMouseMode(newSettings.startInMouseMode)
+            repo.setToggleChord(newSettings.toggleChord)
+            repo.setChordHoldDuration(newSettings.chordHoldDurationMs)
+            repo.setBindings(newSettings.buttonBindings)
+            repo.setAudioPack(newSettings.audioPack)
+            repo.setCursorStyle(newSettings.cursorStyle)
+            repo.setCursorSize(newSettings.cursorSize)
+            repo.setCursorColor(newSettings.cursorColor)
+            
+            Log.i(TAG, "Switched to profile: $deviceName ($deviceId)")
+        }
+    }
 
     // ---------------------------------------------------------------- overlay
 
@@ -287,7 +385,11 @@ class GamepadMouseService : AccessibilityService() {
         val fromGamepad = src and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
             src and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK ||
             src and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD
-        if (fromGamepad) _controllerConnected.value = true
+        if (fromGamepad) {
+            _controllerConnected.value = true
+            // Detect device and switch profile if needed
+            detectAndSwitchDevice(event.deviceId)
+        }
         if (!fromGamepad && !KeyEvent.isGamepadButton(event.keyCode)) return false
 
         val code = event.keyCode
@@ -479,6 +581,7 @@ class GamepadMouseService : AccessibilityService() {
             val h = if (ov.height > 0) ov.height.toFloat() else displayH
             val (nx, ny) = StickProcessor.step(ov.cursorX, ov.cursorY, v, dt, w, h)
             ov.setCursor(nx, ny)
+            showCursor()  // Show cursor when gamepad moves it
         }
 
         val now = System.currentTimeMillis()
@@ -559,6 +662,12 @@ class GamepadMouseService : AccessibilityService() {
     private fun dispatchTap(stroke: GestureDescription.StrokeDescription) {
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         tapGestureInFlight = true
+        
+        // Hide cursor on tap if setting is enabled
+        if (settings.hideOnTap) {
+            hideCursor()
+        }
+        
         val ok = dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(g: GestureDescription?) { tapGestureInFlight = false }
             override fun onCancelled(g: GestureDescription?) { tapGestureInFlight = false }

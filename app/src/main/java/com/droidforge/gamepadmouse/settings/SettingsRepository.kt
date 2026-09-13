@@ -33,7 +33,9 @@ data class Settings(
     val audioPack: String = "MINIMAL",  // AudioPack enum name
     val cursorStyle: String = "ARROW",   // CursorStyle enum name
     val cursorSize: Float = 1.0f,        // Cursor size multiplier (0.5 to 2.0)
-    val cursorColor: Int = 0xFFFFFFFF.toInt()  // ARGB color
+    val cursorColor: Int = 0xFFFFFFFF.toInt(),  // ARGB color
+    val hideOnTap: Boolean = true,       // Hide cursor when screen is tapped
+    val autoHideTimeoutMs: Long = 3000L  // Auto-hide after inactivity (0 = disabled)
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gamepad_mouse")
@@ -58,6 +60,8 @@ class SettingsRepository(private val context: Context) {
         val CURSOR_STYLE = stringPreferencesKey("cursor_style")
         val CURSOR_SIZE = floatPreferencesKey("cursor_size")
         val CURSOR_COLOR = intPreferencesKey("cursor_color")
+        val HIDE_ON_TAP = booleanPreferencesKey("hide_on_tap")
+        val AUTO_HIDE_TIMEOUT = longPreferencesKey("auto_hide_timeout_ms")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
@@ -86,7 +90,9 @@ class SettingsRepository(private val context: Context) {
             audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL",
             cursorStyle = p[Keys.CURSOR_STYLE] ?: "ARROW",
             cursorSize = p[Keys.CURSOR_SIZE] ?: 1.0f,
-            cursorColor = p[Keys.CURSOR_COLOR] ?: 0xFFFFFFFF.toInt()
+            cursorColor = p[Keys.CURSOR_COLOR] ?: 0xFFFFFFFF.toInt(),
+            hideOnTap = p[Keys.HIDE_ON_TAP] ?: true,
+            autoHideTimeoutMs = p[Keys.AUTO_HIDE_TIMEOUT] ?: 3000L
         )
     }
 
@@ -94,6 +100,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSlowMultiplier(v: Float) = context.dataStore.edit { it[Keys.SLOW_MULT] = v }
     suspend fun setFastMultiplier(v: Float) = context.dataStore.edit { it[Keys.FAST_MULT] = v }
     suspend fun setDeadzone(v: Float) = context.dataStore.edit { it[Keys.DEADZONE] = v }
+    suspend fun setCurveExponent(v: Float) = context.dataStore.edit { it[Keys.CURVE_EXP] = v }
     suspend fun setScrollStep(v: Float) = context.dataStore.edit { it[Keys.SCROLL_STEP] = v }
     suspend fun setSwapSticks(v: Boolean) = context.dataStore.edit { it[Keys.SWAP_STICKS] = v }
     suspend fun setInvertScroll(v: Boolean) = context.dataStore.edit { it[Keys.INVERT_SCROLL] = v }
@@ -106,6 +113,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setCursorStyle(style: String) = context.dataStore.edit { it[Keys.CURSOR_STYLE] = style }
     suspend fun setCursorSize(size: Float) = context.dataStore.edit { it[Keys.CURSOR_SIZE] = size }
     suspend fun setCursorColor(color: Int) = context.dataStore.edit { it[Keys.CURSOR_COLOR] = color }
+    suspend fun setHideOnTap(enabled: Boolean) = context.dataStore.edit { it[Keys.HIDE_ON_TAP] = enabled }
+    suspend fun setAutoHideTimeout(ms: Long) = context.dataStore.edit { it[Keys.AUTO_HIDE_TIMEOUT] = ms }
 
     companion object {
         fun encodeBindings(b: Map<Int, MouseAction>): String =
