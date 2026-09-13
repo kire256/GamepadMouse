@@ -210,8 +210,8 @@ private fun SettingsTab(
                 Text("Cursor Style", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
                 
-                val cursorStyles = listOf("ARROW", "DOT", "CROSSHAIR", "CIRCLE", "POINTER", "PLAY")
-                val cursorLabels = listOf("Arrow (Default)", "Dot", "Crosshair", "Circle", "Pointer Hand", "Play Button")
+                val cursorStyles = listOf("ARROW", "DOT", "CROSSHAIR", "CIRCLE", "POINTER", "TRIANGLE")
+                val cursorLabels = listOf("Arrow (Default)", "Dot", "Crosshair", "Circle", "Pointer Hand", "Rounded Triangle")
                 
                 cursorStyles.forEachIndexed { index, style ->
                     Row(

@@ -85,7 +85,7 @@ class CursorOverlayView(context: Context) : View(context) {
             CursorStyle.CROSSHAIR -> drawCrosshair(canvas, cursorX, cursorY)
             CursorStyle.CIRCLE -> drawCircle(canvas, cursorX, cursorY)
             CursorStyle.POINTER -> drawPointer(canvas, cursorX, cursorY)
-            CursorStyle.PLAY -> drawPlay(canvas, cursorX, cursorY)
+            CursorStyle.TRIANGLE -> drawTriangle(canvas, cursorX, cursorY)
         }
     }
     
@@ -164,33 +164,42 @@ class CursorOverlayView(context: Context) : View(context) {
         canvas.drawPath(arrow, outline)
     }
     
-    private fun drawPlay(canvas: Canvas, x: Float, y: Float) {
-        // Rounded triangle cursor (all corners rounded)
+    private fun drawTriangle(canvas: Canvas, x: Float, y: Float) {
+        // Rounded triangle pointing upper-left (like the image)
         val s = sizePx * cursorSizeMultiplier
         arrow.reset()
         
-        // Start at top
-        arrow.moveTo(x + s * 0.15f, y)
+        // Start at the sharp tip (upper left)
+        arrow.moveTo(x, y)
         
-        // Top to right point (with curve)
+        // Top edge going to upper-right with rounded corner
+        arrow.lineTo(x + s * 0.6f, y)
+        
+        // Rounded top-right corner
         arrow.cubicTo(
-            x + s * 0.4f, y,
-            x + s * 0.6f, y + s * 0.3f,
-            x + s * 0.75f, y + s * 0.5f  // Sharp right point
+            x + s * 0.7f, y,
+            x + s * 0.75f, y + s * 0.1f,
+            x + s * 0.75f, y + s * 0.2f
         )
         
-        // Right point to bottom (with curve)
+        // Right edge going down
+        arrow.lineTo(x + s * 0.75f, y + s * 0.6f)
+        
+        // Rounded bottom-right corner  
         arrow.cubicTo(
-            x + s * 0.6f, y + s * 0.7f,
-            x + s * 0.4f, y + s,
-            x + s * 0.15f, y + s
+            x + s * 0.75f, y + s * 0.7f,
+            x + s * 0.7f, y + s * 0.75f,
+            x + s * 0.6f, y + s * 0.75f
         )
         
-        // Bottom to top-left (rounded corner)
+        // Bottom edge going left
+        arrow.lineTo(x + s * 0.2f, y + s * 0.75f)
+        
+        // Rounded bottom-left corner back to tip
         arrow.cubicTo(
-            x, y + s * 0.9f,
-            x, y + s * 0.1f,
-            x + s * 0.15f, y
+            x + s * 0.1f, y + s * 0.75f,
+            x, y + s * 0.6f,
+            x, y
         )
         arrow.close()
         
