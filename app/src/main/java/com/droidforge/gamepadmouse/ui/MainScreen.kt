@@ -1,7 +1,10 @@
 package com.droidforge.gamepadmouse.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -206,8 +210,8 @@ private fun SettingsTab(
                 Text("Cursor Style", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
                 
-                val cursorStyles = listOf("ARROW", "DOT", "CROSSHAIR", "CIRCLE", "POINTER")
-                val cursorLabels = listOf("Arrow (Default)", "Dot", "Crosshair", "Circle", "Pointer Hand")
+                val cursorStyles = listOf("ARROW", "DOT", "CROSSHAIR", "CIRCLE", "POINTER", "PLAY")
+                val cursorLabels = listOf("Arrow (Default)", "Dot", "Crosshair", "Circle", "Pointer Hand", "Play Button")
                 
                 cursorStyles.forEachIndexed { index, style ->
                     Row(
@@ -225,6 +229,74 @@ private fun SettingsTab(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(cursorLabels[index], style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        
+        SliderRow(
+            label = "Cursor size",
+            value = settings.cursorSize,
+            range = 0.5f..2.0f,
+            format = { size -> "×${"%.1f".format(size)}" },
+        ) { scope.launch { repo.setCursorSize(it) } }
+        
+        // Cursor color picker
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("Cursor Color", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                
+                val cursorColors = listOf(
+                    0xFFFFFFFF.toInt() to "White",
+                    0xFF000000.toInt() to "Black",
+                    0xFFFF0000.toInt() to "Red",
+                    0xFF00FF00.toInt() to "Green",
+                    0xFF0000FF.toInt() to "Blue",
+                    0xFFFFFF00.toInt() to "Yellow",
+                    0xFFFF00FF.toInt() to "Magenta",
+                    0xFF00FFFF.toInt() to "Cyan"
+                )
+                
+                // Display colors in a grid
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    cursorColors.chunked(4).forEach { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            row.forEach { (color, name) ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.clickable {
+                                        scope.launch { repo.setCursorColor(color) }
+                                    }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(60.dp)
+                                            .height(40.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(androidx.compose.ui.graphics.Color(color))
+                                            .then(
+                                                if (settings.cursorColor == color)
+                                                    Modifier.border(
+                                                        3.dp,
+                                                        MaterialTheme.colorScheme.primary,
+                                                        RoundedCornerShape(8.dp)
+                                                    )
+                                                else Modifier
+                                            )
+                                    )
+                                    Text(name, style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
                     }
                 }
             }

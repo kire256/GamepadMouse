@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
@@ -30,7 +31,9 @@ data class Settings(
     val chordHoldDurationMs: Long = 0L,
     val buttonBindings: Map<Int, MouseAction> = DefaultBindings.buttons,
     val audioPack: String = "MINIMAL",  // AudioPack enum name
-    val cursorStyle: String = "ARROW"   // CursorStyle enum name
+    val cursorStyle: String = "ARROW",   // CursorStyle enum name
+    val cursorSize: Float = 1.0f,        // Cursor size multiplier (0.5 to 2.0)
+    val cursorColor: Int = 0xFFFFFFFF.toInt()  // ARGB color
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gamepad_mouse")
@@ -53,6 +56,8 @@ class SettingsRepository(private val context: Context) {
         val BINDINGS = stringPreferencesKey("bindings")
         val AUDIO_PACK = stringPreferencesKey("audio_pack")
         val CURSOR_STYLE = stringPreferencesKey("cursor_style")
+        val CURSOR_SIZE = floatPreferencesKey("cursor_size")
+        val CURSOR_COLOR = intPreferencesKey("cursor_color")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
@@ -79,7 +84,9 @@ class SettingsRepository(private val context: Context) {
             chordHoldDurationMs = p[Keys.CHORD_HOLD_DURATION] ?: 0L,
             buttonBindings = p[Keys.BINDINGS]?.let(::decodeBindings) ?: DefaultBindings.buttons,
             audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL",
-            cursorStyle = p[Keys.CURSOR_STYLE] ?: "ARROW"
+            cursorStyle = p[Keys.CURSOR_STYLE] ?: "ARROW",
+            cursorSize = p[Keys.CURSOR_SIZE] ?: 1.0f,
+            cursorColor = p[Keys.CURSOR_COLOR] ?: 0xFFFFFFFF.toInt()
         )
     }
 
@@ -97,6 +104,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setToggleChord(c: Set<Int>) = context.dataStore.edit { it[Keys.TOGGLE_CHORD] = c.map { it.toString() }.toSet() }
     suspend fun setAudioPack(pack: String) = context.dataStore.edit { it[Keys.AUDIO_PACK] = pack }
     suspend fun setCursorStyle(style: String) = context.dataStore.edit { it[Keys.CURSOR_STYLE] = style }
+    suspend fun setCursorSize(size: Float) = context.dataStore.edit { it[Keys.CURSOR_SIZE] = size }
+    suspend fun setCursorColor(color: Int) = context.dataStore.edit { it[Keys.CURSOR_COLOR] = color }
 
     companion object {
         fun encodeBindings(b: Map<Int, MouseAction>): String =

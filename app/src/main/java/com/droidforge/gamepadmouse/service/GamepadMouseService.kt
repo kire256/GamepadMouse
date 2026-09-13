@@ -147,6 +147,9 @@ class GamepadMouseService : AccessibilityService() {
                     Log.w(TAG, "Invalid cursor style: ${s.cursorStyle}, using ARROW")
                     overlay?.cursorStyle = CursorStyle.ARROW
                 }
+                // Update cursor size and color
+                overlay?.cursorSizeMultiplier = s.cursorSize
+                overlay?.cursorColor = s.cursorColor
                 if (first) {
                     first = false
                     if (s.startInMouseMode) setMode(ServiceMode.MOUSE)
