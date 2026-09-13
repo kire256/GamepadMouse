@@ -302,9 +302,7 @@ private fun SettingsTab(
             }
         }
         
-        // Cursor auto-hide settings
-        SwitchRow("Hide cursor on tap", settings.hideOnTap) { scope.launch { repo.setHideOnTap(it) } }
-        
+        // Cursor auto-hide timeout
         SliderRow(
             label = "Auto-hide timeout",
             value = settings.autoHideTimeoutMs.toFloat(),

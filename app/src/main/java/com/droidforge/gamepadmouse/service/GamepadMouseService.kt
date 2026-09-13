@@ -193,22 +193,6 @@ class GamepadMouseService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Detect manual finger taps to hide cursor
-        if (event != null && _mode.value == ServiceMode.MOUSE) {
-            Log.d(TAG, "Accessibility event: ${AccessibilityEvent.eventTypeToString(event.eventType)}")
-            
-            if (settings.hideOnTap) {
-                when (event.eventType) {
-                    AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
-                    AccessibilityEvent.TYPE_VIEW_CLICKED -> {
-                        // User manually tapped the screen
-                        Log.i(TAG, "Manual tap detected - hiding cursor")
-                        hideCursor()
-                    }
-                }
-            }
-        }
-        
         // Reclaim joystick-capture focus on window state changes.
         if (_mode.value == ServiceMode.MOUSE) {
             joystickCapture?.post { joystickCapture?.reclaimFocus() }
@@ -684,11 +668,6 @@ class GamepadMouseService : AccessibilityService() {
     private fun dispatchTap(stroke: GestureDescription.StrokeDescription) {
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         tapGestureInFlight = true
-        
-        // Hide cursor on tap if setting is enabled
-        if (settings.hideOnTap) {
-            hideCursor()
-        }
         
         val ok = dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(g: GestureDescription?) { tapGestureInFlight = false }

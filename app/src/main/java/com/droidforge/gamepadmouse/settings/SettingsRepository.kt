@@ -34,7 +34,6 @@ data class Settings(
     val cursorStyle: String = "ARROW",   // CursorStyle enum name
     val cursorSize: Float = 1.0f,        // Cursor size multiplier (0.5 to 2.0)
     val cursorColor: Int = 0xFFFFFFFF.toInt(),  // ARGB color
-    val hideOnTap: Boolean = true,       // Hide cursor when screen is tapped
     val autoHideTimeoutMs: Long = 3000L  // Auto-hide after inactivity (0 = disabled)
 )
 
@@ -60,7 +59,6 @@ class SettingsRepository(private val context: Context) {
         val CURSOR_STYLE = stringPreferencesKey("cursor_style")
         val CURSOR_SIZE = floatPreferencesKey("cursor_size")
         val CURSOR_COLOR = intPreferencesKey("cursor_color")
-        val HIDE_ON_TAP = booleanPreferencesKey("hide_on_tap")
         val AUTO_HIDE_TIMEOUT = longPreferencesKey("auto_hide_timeout_ms")
     }
 
@@ -91,7 +89,6 @@ class SettingsRepository(private val context: Context) {
             cursorStyle = p[Keys.CURSOR_STYLE] ?: "ARROW",
             cursorSize = p[Keys.CURSOR_SIZE] ?: 1.0f,
             cursorColor = p[Keys.CURSOR_COLOR] ?: 0xFFFFFFFF.toInt(),
-            hideOnTap = p[Keys.HIDE_ON_TAP] ?: true,
             autoHideTimeoutMs = p[Keys.AUTO_HIDE_TIMEOUT] ?: 3000L
         )
     }
@@ -113,7 +110,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun setCursorStyle(style: String) = context.dataStore.edit { it[Keys.CURSOR_STYLE] = style }
     suspend fun setCursorSize(size: Float) = context.dataStore.edit { it[Keys.CURSOR_SIZE] = size }
     suspend fun setCursorColor(color: Int) = context.dataStore.edit { it[Keys.CURSOR_COLOR] = color }
-    suspend fun setHideOnTap(enabled: Boolean) = context.dataStore.edit { it[Keys.HIDE_ON_TAP] = enabled }
     suspend fun setAutoHideTimeout(ms: Long) = context.dataStore.edit { it[Keys.AUTO_HIDE_TIMEOUT] = ms }
 
     companion object {
