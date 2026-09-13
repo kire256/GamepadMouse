@@ -324,7 +324,6 @@ class GamepadMouseService : AccessibilityService() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
@@ -358,6 +357,14 @@ class GamepadMouseService : AccessibilityService() {
         try {
             windowManager.addView(cursorView, cursorLp)
             overlay = cursorView
+            
+            // Set up manual tap detection callback
+            cursorView.onManualTap = {
+                if (settings.hideOnTap) {
+                    hideCursor()
+                }
+            }
+            
             windowManager.addView(captureView, captureLp)
             joystickCapture = captureView
             captureView.post { captureView.requestFocus() }

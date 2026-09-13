@@ -19,6 +19,9 @@ class CursorOverlayView(context: Context) : View(context) {
     var cursorY = 0f
         private set
     
+    // Callback for when user manually taps the screen
+    var onManualTap: (() -> Unit)? = null
+    
     var cursorStyle = CursorStyle.ARROW
         set(value) {
             field = value
@@ -64,6 +67,14 @@ class CursorOverlayView(context: Context) : View(context) {
     init {
         isFocusable = false
         setWillNotDraw(false)
+        
+        // Detect manual finger taps on the screen
+        setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                onManualTap?.invoke()
+            }
+            false  // Don't consume the event - let it pass through
+        }
     }
 
     fun setCursor(x: Float, y: Float) {
