@@ -17,6 +17,7 @@ import android.view.SurfaceView
 class JoystickCaptureView(
     context: Context,
     private val onJoystick: (MotionEvent) -> Boolean,
+    private val onGamepadKey: ((KeyEvent) -> Boolean)? = null,
 ) : SurfaceView(context), SurfaceHolder.Callback {
 
     private var lastReclaimMs = 0L
@@ -56,6 +57,14 @@ class JoystickCaptureView(
             return onJoystick(event)
         }
         return super.onGenericMotionEvent(event)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val fromController = event.source and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
+            event.source and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD ||
+            KeyEvent.isGamepadButton(event.keyCode)
+        if (fromController && onGamepadKey?.invoke(event) == true) return true
+        return super.dispatchKeyEvent(event)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {

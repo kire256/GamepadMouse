@@ -159,6 +159,7 @@ private fun BindingEditorDialog(
     var hold by remember(original) { mutableStateOf(original.holdDurationMs.toFloat()) }
     var choosingAction by remember { mutableStateOf(false) }
     val recorded by GamepadMouseService.recordedChord.collectAsState()
+    val isRecording by GamepadMouseService.recordingChord.collectAsState()
 
     if (recorded != null) keys = recorded!!
 
@@ -170,9 +171,21 @@ private fun BindingEditorDialog(
                 Text("Buttons", style = MaterialTheme.typography.titleSmall)
                 Text(keys.sorted().joinToString(" + ") { keyCodeToName(it) }.ifBlank { "None recorded" })
                 OutlinedButton(onClick = { GamepadMouseService.startChordRecording() }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Record button or combination")
+                    Text(if (isRecording) "Listening…" else "Record button or combination")
                 }
-                Text("Press and release the controller buttons together.", style = MaterialTheme.typography.bodySmall)
+                if (isRecording) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Listening for controller input…", style = MaterialTheme.typography.titleSmall)
+                            Text("Hold the desired button or combination, then release it.")
+                        }
+                    }
+                } else {
+                    Text("Tap Record, then press and release the controller buttons together.", style = MaterialTheme.typography.bodySmall)
+                }
 
                 HorizontalDivider()
                 Text("Action", style = MaterialTheme.typography.titleSmall)

@@ -24,6 +24,7 @@ import com.droidforge.gamepadmouse.input.KeyboardInputRouter
 import com.droidforge.gamepadmouse.input.BindingMatcher
 import com.droidforge.gamepadmouse.input.ButtonBinding
 import com.droidforge.gamepadmouse.input.MouseAction
+import com.droidforge.gamepadmouse.input.ModeTransitions
 import com.droidforge.gamepadmouse.input.ServiceMode
 import com.droidforge.gamepadmouse.input.StickProcessor
 import com.droidforge.gamepadmouse.settings.Settings
@@ -204,7 +205,7 @@ class GamepadMouseService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // Reclaim joystick-capture focus on window state changes.
-        if (_mode.value == ServiceMode.MOUSE) {
+        if (_mode.value == ServiceMode.MOUSE || _mode.value == ServiceMode.KEYBOARD) {
             joystickCapture?.post { joystickCapture?.reclaimFocus() }
         }
     }
@@ -365,7 +366,7 @@ class GamepadMouseService : AccessibilityService() {
         // block the app) because TYPE_ACCESSIBILITY_OVERLAY touch events are handled by
         // the service, not consumed by the view.
         // Being full-screen AND focusable means Android never hands focus back to the app.
-        val captureView = JoystickCaptureView(this, ::onJoystick)
+        val captureView = JoystickCaptureView(this, ::onJoystick, ::onCapturedKeyEvent)
         val captureLp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -409,7 +410,7 @@ class GamepadMouseService : AccessibilityService() {
         val kbView = KeyboardOverlayView(this)
         kbView.widthPercent = settings.keyboardWidthPercent
         kbView.heightPercent = settings.keyboardHeightPercent
-        val captureView = JoystickCaptureView(this, ::onJoystick)
+        val captureView = JoystickCaptureView(this, ::onJoystick, ::onCapturedKeyEvent)
         val kbLp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -460,7 +461,11 @@ class GamepadMouseService : AccessibilityService() {
     private val heldForRecording = HashSet<Int>()
     private val heldChordButtons = HashSet<Int>()
 
-    override fun onKeyEvent(event: KeyEvent): Boolean {
+    override fun onKeyEvent(event: KeyEvent): Boolean = handleGamepadKeyEvent(event)
+
+    private fun onCapturedKeyEvent(event: KeyEvent): Boolean = handleGamepadKeyEvent(event)
+
+    private fun handleGamepadKeyEvent(event: KeyEvent): Boolean {
         val src = event.source
         val fromGamepad = src and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
             src and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK ||
@@ -528,6 +533,16 @@ class GamepadMouseService : AccessibilityService() {
                 }
                 
                 if (_mode.value == ServiceMode.KEYBOARD) {
+                    bindingMatcher.keyDown(code)
+                    val keyboardToggle = s.detailedBindings
+                        .filter { it.action == MouseAction.KEYBOARD_MODE }
+                        .sortedByDescending { it.keyCodes.size }
+                        .firstOrNull { bindingMatcher.isHeld(it) }
+                    if (keyboardToggle != null) {
+                        setMode(ServiceMode.MOUSE)
+                        bindingMatcher.markFired(keyboardToggle)
+                        return true
+                    }
                     if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
                     handleKeyboardButtonDown(code)
                     return DefaultBindings.isGamepadKey(code)
@@ -606,7 +621,7 @@ class GamepadMouseService : AccessibilityService() {
             MouseAction.VOLUME_UP -> adjustVolume(AudioManager.ADJUST_RAISE)
             MouseAction.VOLUME_DOWN -> adjustVolume(AudioManager.ADJUST_LOWER)
             MouseAction.VOLUME_MUTE -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE)
-            MouseAction.KEYBOARD_MODE -> setMode(ServiceMode.KEYBOARD)
+            MouseAction.KEYBOARD_MODE -> setMode(ModeTransitions.keyboardActionTarget(_mode.value))
             MouseAction.NONE -> Unit
         }
     }

@@ -35,7 +35,10 @@ Phase 2 input customization and keyboard-mode iteration.
 - Debug APK builds successfully with JDK 21.
 - Debug APK installs on Samsung Galaxy Z Fold 6 (`RFGL23YPJLR`).
 - Installed package: `com.droidforge.gamepadmouse.debug`.
-- Current debug version: `0.3.0-bindings-debug (3)`.
+- Current debug version: `0.3.1-input-fix-debug (4)`.
+- The focusable capture view now forwards controller key events to the service, fixing D-pad keyboard navigation.
+- A keyboard-mode binding toggles the keyboard off when pressed again.
+- Binding recording shows a prominent “Listening for controller input…” card while active.
 
 ## Next testing
 
