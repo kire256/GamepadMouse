@@ -23,12 +23,13 @@ enum class MouseAction(val label: String) {
     MEDIA_PLAY_PAUSE("Play / Pause"),
     MEDIA_NEXT("Next track"),
     MEDIA_PREVIOUS("Previous track"),
-    VOLUME_UP("Volume up"),
-    VOLUME_DOWN("Volume down"),
+    VOLUME_UP("Volume Up"),
+    VOLUME_DOWN("Volume Down"),
     VOLUME_MUTE("Mute / Unmute"),
+    KEYBOARD_MODE("Keyboard Mode"),
 }
 
-enum class ServiceMode { GAMEPAD, MOUSE }
+enum class ServiceMode { GAMEPAD, MOUSE, KEYBOARD }
 
 object DefaultBindings {
     /** Default button → action map for MOUSE mode. Fully reassignable in later phases. */
