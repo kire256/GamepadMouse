@@ -194,6 +194,42 @@ private fun SettingsTab(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Cursor", style = MaterialTheme.typography.titleMedium)
+        
+        // Cursor style selector
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("Cursor Style", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                
+                val cursorStyles = listOf("ARROW", "DOT", "CROSSHAIR", "CIRCLE", "POINTER")
+                val cursorLabels = listOf("Arrow (Default)", "Dot", "Crosshair", "Circle", "Pointer Hand")
+                
+                cursorStyles.forEachIndexed { index, style ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                scope.launch { repo.setCursorStyle(style) }
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = settings.cursorStyle == style,
+                            onClick = { scope.launch { repo.setCursorStyle(style) } }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(cursorLabels[index], style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        
         SliderRow(
             label = "Base speed",
             value = settings.baseSpeedPxPerSec,

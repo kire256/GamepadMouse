@@ -18,6 +18,12 @@ class CursorOverlayView(context: Context) : View(context) {
         private set
     var cursorY = 0f
         private set
+    
+    var cursorStyle = CursorStyle.ARROW
+        set(value) {
+            field = value
+            invalidate()
+        }
 
     private val sizePx = context.resources.displayMetrics.density * 22f
 
@@ -60,7 +66,17 @@ class CursorOverlayView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        buildArrow(cursorX, cursorY)
+        when (cursorStyle) {
+            CursorStyle.ARROW -> drawArrow(canvas, cursorX, cursorY)
+            CursorStyle.DOT -> drawDot(canvas, cursorX, cursorY)
+            CursorStyle.CROSSHAIR -> drawCrosshair(canvas, cursorX, cursorY)
+            CursorStyle.CIRCLE -> drawCircle(canvas, cursorX, cursorY)
+            CursorStyle.POINTER -> drawPointer(canvas, cursorX, cursorY)
+        }
+    }
+    
+    private fun drawArrow(canvas: Canvas, x: Float, y: Float) {
+        buildArrow(x, y)
         canvas.save(); canvas.translate(2f, 3f); canvas.drawPath(arrow, shadow); canvas.restore()
         canvas.drawPath(arrow, fill)
         canvas.drawPath(arrow, outline)
@@ -77,5 +93,60 @@ class CursorOverlayView(context: Context) : View(context) {
         arrow.lineTo(x + s * 0.42f, y + s * 0.70f)
         arrow.lineTo(x + s * 0.75f, y + s * 0.70f)
         arrow.close()
+    }
+    
+    private fun drawDot(canvas: Canvas, x: Float, y: Float) {
+        val radius = sizePx * 0.3f
+        canvas.drawCircle(x, y, radius + 2f, shadow)
+        canvas.drawCircle(x, y, radius, fill)
+        canvas.drawCircle(x, y, radius, outline)
+    }
+    
+    private fun drawCrosshair(canvas: Canvas, x: Float, y: Float) {
+        val size = sizePx * 0.6f
+        val thickness = context.resources.displayMetrics.density * 2f
+        
+        // Horizontal line
+        canvas.drawRect(x - size, y - thickness/2, x + size, y + thickness/2, shadow)
+        canvas.drawRect(x - size, y - thickness/2, x + size, y + thickness/2, fill)
+        canvas.drawRect(x - size, y - thickness/2, x + size, y + thickness/2, outline)
+        
+        // Vertical line
+        canvas.drawRect(x - thickness/2, y - size, x + thickness/2, y + size, shadow)
+        canvas.drawRect(x - thickness/2, y - size, x + thickness/2, y + size, fill)
+        canvas.drawRect(x - thickness/2, y - size, x + thickness/2, y + size, outline)
+        
+        // Center dot
+        val dotRadius = sizePx * 0.15f
+        canvas.drawCircle(x, y, dotRadius, fill)
+        canvas.drawCircle(x, y, dotRadius, outline)
+    }
+    
+    private fun drawCircle(canvas: Canvas, x: Float, y: Float) {
+        val radius = sizePx * 0.5f
+        canvas.drawCircle(x, y, radius + 2f, shadow)
+        canvas.drawCircle(x, y, radius, outline)
+        // Hollow circle with center dot
+        val dotRadius = sizePx * 0.15f
+        canvas.drawCircle(x, y, dotRadius, fill)
+    }
+    
+    private fun drawPointer(canvas: Canvas, x: Float, y: Float) {
+        // Pointing hand/finger cursor
+        val s = sizePx
+        arrow.reset()
+        // Simplified hand pointing up
+        arrow.moveTo(x, y)
+        arrow.lineTo(x - s * 0.3f, y + s * 0.5f)
+        arrow.lineTo(x - s * 0.15f, y + s * 0.5f)
+        arrow.lineTo(x - s * 0.15f, y + s)
+        arrow.lineTo(x + s * 0.15f, y + s)
+        arrow.lineTo(x + s * 0.15f, y + s * 0.5f)
+        arrow.lineTo(x + s * 0.3f, y + s * 0.5f)
+        arrow.close()
+        
+        canvas.save(); canvas.translate(2f, 3f); canvas.drawPath(arrow, shadow); canvas.restore()
+        canvas.drawPath(arrow, fill)
+        canvas.drawPath(arrow, outline)
     }
 }

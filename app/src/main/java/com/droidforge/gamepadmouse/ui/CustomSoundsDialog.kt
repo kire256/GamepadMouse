@@ -36,24 +36,33 @@ fun CustomSoundsDialog(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { 
-            // Take persistent permission
-            context.contentResolver.takePersistableUriPermission(
-                it,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            tapUri = it
+            try {
+                // Take persistent permission
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                tapUri = it
+            } catch (e: Exception) {
+                android.util.Log.e("CustomSounds", "Failed to take permission: ${e.message}")
+            }
         }
+        // If uri is null, user cancelled - do nothing
     }
     
     val longPressPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            context.contentResolver.takePersistableUriPermission(
-                it,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            longPressUri = it
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                longPressUri = it
+            } catch (e: Exception) {
+                android.util.Log.e("CustomSounds", "Failed to take permission: ${e.message}")
+            }
         }
     }
     
@@ -61,11 +70,15 @@ fun CustomSoundsDialog(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            context.contentResolver.takePersistableUriPermission(
-                it,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            toggleUri = it
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                toggleUri = it
+            } catch (e: Exception) {
+                android.util.Log.e("CustomSounds", "Failed to take permission: ${e.message}")
+            }
         }
     }
     

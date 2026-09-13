@@ -140,6 +140,13 @@ class GamepadMouseService : AccessibilityService() {
                     Log.w(TAG, "Invalid audio pack: ${s.audioPack}, using MINIMAL")
                     audioManager.loadPack(AudioPack.MINIMAL)
                 }
+                // Update cursor style when settings change
+                try {
+                    overlay?.cursorStyle = CursorStyle.valueOf(s.cursorStyle)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Invalid cursor style: ${s.cursorStyle}, using ARROW")
+                    overlay?.cursorStyle = CursorStyle.ARROW
+                }
                 if (first) {
                     first = false
                     if (s.startInMouseMode) setMode(ServiceMode.MOUSE)

@@ -29,7 +29,8 @@ data class Settings(
     val toggleChord: Set<Int> = DefaultBindings.toggleChord,
     val chordHoldDurationMs: Long = 0L,
     val buttonBindings: Map<Int, MouseAction> = DefaultBindings.buttons,
-    val audioPack: String = "MINIMAL"  // AudioPack enum name
+    val audioPack: String = "MINIMAL",  // AudioPack enum name
+    val cursorStyle: String = "ARROW"   // CursorStyle enum name
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gamepad_mouse")
@@ -51,6 +52,7 @@ class SettingsRepository(private val context: Context) {
         val CHORD_HOLD_DURATION = longPreferencesKey("chord_hold_duration")
         val BINDINGS = stringPreferencesKey("bindings")
         val AUDIO_PACK = stringPreferencesKey("audio_pack")
+        val CURSOR_STYLE = stringPreferencesKey("cursor_style")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
@@ -76,7 +78,8 @@ class SettingsRepository(private val context: Context) {
             toggleChord = toggleChordSet ?: DefaultBindings.toggleChord,
             chordHoldDurationMs = p[Keys.CHORD_HOLD_DURATION] ?: 0L,
             buttonBindings = p[Keys.BINDINGS]?.let(::decodeBindings) ?: DefaultBindings.buttons,
-            audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL"
+            audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL",
+            cursorStyle = p[Keys.CURSOR_STYLE] ?: "ARROW"
         )
     }
 
@@ -93,6 +96,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setBindings(b: Map<Int, MouseAction>) = context.dataStore.edit { it[Keys.BINDINGS] = encodeBindings(b) }
     suspend fun setToggleChord(c: Set<Int>) = context.dataStore.edit { it[Keys.TOGGLE_CHORD] = c.map { it.toString() }.toSet() }
     suspend fun setAudioPack(pack: String) = context.dataStore.edit { it[Keys.AUDIO_PACK] = pack }
+    suspend fun setCursorStyle(style: String) = context.dataStore.edit { it[Keys.CURSOR_STYLE] = style }
 
     companion object {
         fun encodeBindings(b: Map<Int, MouseAction>): String =
