@@ -28,6 +28,7 @@ enum class MouseAction(val label: String) {
     VOLUME_MUTE("Mute / Unmute"),
     KEYBOARD_MODE("Keyboard Mode"),
     KEYBOARD_PRESS("Keyboard press"),
+    KEYBOARD_BACK("Keyboard backspace"),
     KEYBOARD_MOVE("Keyboard move position"),
     KEYBOARD_HIDE("Keyboard hide"),
 }
@@ -46,12 +47,22 @@ object DefaultBindings {
         KeyEvent.KEYCODE_BUTTON_THUMBL to MouseAction.HOME,
     )
 
-    val detailed: List<ButtonBinding> = buttons.map { (keyCode, action) ->
-        ButtonBinding(setOf(keyCode), action, setOf(BindingMode.MOUSE), 0L)
-    } + listOf(
+    private val keyboardDefaults = listOf(
         ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_B), MouseAction.KEYBOARD_PRESS, setOf(BindingMode.KEYBOARD), 0L),
+        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_X), MouseAction.KEYBOARD_BACK, setOf(BindingMode.KEYBOARD), 0L),
         ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_A), MouseAction.KEYBOARD_HIDE, setOf(BindingMode.KEYBOARD), 0L),
     )
+
+    val detailed: List<ButtonBinding> = buttons.map { (keyCode, action) ->
+        ButtonBinding(setOf(keyCode), action, setOf(BindingMode.MOUSE), 0L)
+    } + keyboardDefaults
+
+    fun withKeyboardDefaults(bindings: List<ButtonBinding>): List<ButtonBinding> {
+        val missing = keyboardDefaults.filter { default ->
+            bindings.none { it.action == default.action && BindingMode.KEYBOARD in it.modes }
+        }
+        return bindings + missing
+    }
 
     /** Default chord that flips GAMEPAD ⇄ MOUSE: Start + Select held together. */
     val toggleChord: Set<Int> = setOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT)

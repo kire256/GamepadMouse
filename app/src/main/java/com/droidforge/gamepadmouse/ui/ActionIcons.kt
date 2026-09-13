@@ -72,6 +72,7 @@ fun getActionIcon(action: MouseAction): ImageVector = when (action) {
     MouseAction.VOLUME_MUTE -> Icons.Filled.VolumeMute
     MouseAction.KEYBOARD_MODE -> Icons.Filled.Menu
     MouseAction.KEYBOARD_PRESS -> Icons.Filled.TouchApp
+    MouseAction.KEYBOARD_BACK -> Icons.Filled.KeyboardArrowLeft
     MouseAction.KEYBOARD_MOVE -> Icons.Filled.Menu
     MouseAction.KEYBOARD_HIDE -> Icons.Filled.KeyboardArrowLeft
 }
@@ -119,6 +120,7 @@ fun CategorizedActionPickerDialog(
         MouseAction.TOGGLE_MODE,
         MouseAction.KEYBOARD_MODE,
         MouseAction.KEYBOARD_PRESS,
+        MouseAction.KEYBOARD_BACK,
         MouseAction.KEYBOARD_MOVE,
         MouseAction.KEYBOARD_HIDE,
     )

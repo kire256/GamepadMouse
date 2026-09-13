@@ -85,12 +85,14 @@ class GamepadMouseService : AccessibilityService() {
         private const val LONG_PRESS_MS = 650L
         
         fun startChordRecording() {
-            _recordingChord.value = true
             _recordedChord.value = null
+            instance?.beginChordRecording()
         }
         
         fun stopChordRecording() {
             _recordingChord.value = false
+            _recordedChord.value = null
+            instance?.heldForRecording?.clear()
         }
     }
 
@@ -502,6 +504,13 @@ class GamepadMouseService : AccessibilityService() {
     // ---------------------------------------------------------------- buttons
 
     private val heldForRecording = HashSet<Int>()
+    private var recordingArmedAt = 0L
+
+    private fun beginChordRecording() {
+        heldForRecording.clear()
+        recordingArmedAt = android.os.SystemClock.uptimeMillis() + 250L
+        _recordingChord.value = true
+    }
     private val heldChordButtons = HashSet<Int>()
 
     override fun onKeyEvent(event: KeyEvent): Boolean = handleGamepadKeyEvent(event)
@@ -524,6 +533,7 @@ class GamepadMouseService : AccessibilityService() {
         
         // Chord recording mode intercepts everything
         if (_recordingChord.value) {
+            if (android.os.SystemClock.uptimeMillis() < recordingArmedAt) return true
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> {
                     if (event.repeatCount == 0) {
@@ -578,6 +588,14 @@ class GamepadMouseService : AccessibilityService() {
                 if (_mode.value == ServiceMode.KEYBOARD) {
                     if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
                     bindingMatcher.keyDown(code)
+                    val keyboardToggle = s.detailedBindings
+                        .filter { it.action == MouseAction.KEYBOARD_MODE }
+                        .sortedByDescending { it.keyCodes.size }
+                        .firstOrNull { bindingMatcher.isHeld(it) }
+                    if (keyboardToggle != null) {
+                        setMode(ServiceMode.MOUSE)
+                        return true
+                    }
                     val keyboardBindings = s.detailedBindings.filter { it.appliesIn(ServiceMode.KEYBOARD) }
                     val matched = bindingMatcher.matching(keyboardBindings, ServiceMode.KEYBOARD)
                     if (matched.isNotEmpty()) {
@@ -672,6 +690,9 @@ class GamepadMouseService : AccessibilityService() {
             }
             MouseAction.KEYBOARD_PRESS -> if (_mode.value == ServiceMode.KEYBOARD) {
                 keyboardOverlay?.getCurrentSelectedKey()?.let(::activateKeyboardKey)
+            }
+            MouseAction.KEYBOARD_BACK -> if (_mode.value == ServiceMode.KEYBOARD) {
+                keyboardOverlay?.let(::backspaceText)
             }
             MouseAction.KEYBOARD_MOVE -> if (_mode.value == ServiceMode.KEYBOARD) {
                 keyboardOverlay?.let { kb ->

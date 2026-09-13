@@ -103,9 +103,9 @@ class SettingsRepository(private val context: Context) {
             toggleChord = toggleChordSet ?: DefaultBindings.toggleChord,
             chordHoldDurationMs = p[Keys.CHORD_HOLD_DURATION] ?: 0L,
             buttonBindings = p[Keys.BINDINGS]?.let(::decodeBindings) ?: DefaultBindings.buttons,
-            detailedBindings = p[Keys.DETAILED_BINDINGS]?.let(BindingCodec::decode)
+            detailedBindings = DefaultBindings.withKeyboardDefaults(p[Keys.DETAILED_BINDINGS]?.let(BindingCodec::decode)
                 ?: p[Keys.BINDINGS]?.let(BindingCodec::decode)
-                ?: DefaultBindings.detailed,
+                ?: DefaultBindings.detailed),
             audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL",
             cursorStyle = p[Keys.CURSOR_STYLE] ?: "ARROW",
             cursorSize = p[Keys.CURSOR_SIZE] ?: 1.0f,

@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -171,6 +172,10 @@ private fun BindingEditorDialog(
     var choosingAction by remember { mutableStateOf(false) }
     val recorded by GamepadMouseService.recordedChord.collectAsState()
     val isRecording by GamepadMouseService.recordingChord.collectAsState()
+
+    LaunchedEffect(original) {
+        GamepadMouseService.stopChordRecording()
+    }
 
     if (recorded != null) keys = recorded!!
 
