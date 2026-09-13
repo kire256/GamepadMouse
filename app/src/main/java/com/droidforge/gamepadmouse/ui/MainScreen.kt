@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -89,21 +90,27 @@ fun MainScreen(
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                    label = { Text("Settings") },
+                    label = { Text("Mouse") },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.SportsEsports, contentDescription = null) },
-                    label = { Text("Bindings") },
+                    icon = { Icon(Icons.Filled.Tune, contentDescription = null) },
+                    label = { Text("Keyboard") },
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Tune, contentDescription = null) },
-                    label = { Text("Advanced") },
+                    icon = { Icon(Icons.Filled.SportsEsports, contentDescription = null) },
+                    label = { Text("Bindings") },
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.Tune, contentDescription = null) },
+                    label = { Text("General") },
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 }
                 )
             }
         }
@@ -123,13 +130,19 @@ fun MainScreen(
                 repo = repo,
                 scope = scope,
             )
-            2 -> BindingsTab(
+            2 -> KeyboardSettingsTab(
                 modifier = Modifier.padding(padding),
                 settings = settings,
                 repo = repo,
                 scope = scope,
             )
-            3 -> AdvancedTab(
+            3 -> BindingsTab(
+                modifier = Modifier.padding(padding),
+                settings = settings,
+                repo = repo,
+                scope = scope,
+            )
+            4 -> AdvancedTab(
                 modifier = Modifier.padding(padding),
                 settings = settings,
                 repo = repo,
@@ -207,8 +220,6 @@ private fun SettingsTab(
     repo: SettingsRepository,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
-    var keyboardTestText by remember { mutableStateOf("") }
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -329,58 +340,6 @@ private fun SettingsTab(
             format = { ms -> if (ms == 0f) "Disabled" else "${(ms / 1000).roundToInt()}s" },
         ) { scope.launch { repo.setAutoHideTimeout(it.toLong()) } }
 
-        HorizontalDivider()
-        Text("Keyboard overlay", style = MaterialTheme.typography.titleMedium)
-        SliderRow(
-            label = "Keyboard width",
-            value = settings.keyboardWidthPercent,
-            range = 40f..100f,
-            format = { "${it.roundToInt()}%" },
-        ) { scope.launch { repo.setKeyboardWidthPercent(it) } }
-        SliderRow(
-            label = "Keyboard height",
-            value = settings.keyboardHeightPercent,
-            range = 25f..80f,
-            format = { "${it.roundToInt()}%" },
-        ) { scope.launch { repo.setKeyboardHeightPercent(it) } }
-        SwitchRow("Position keyboard at top", settings.keyboardAtTop) { scope.launch { repo.setKeyboardAtTop(it) } }
-        SwitchRow("Show number row", settings.keyboardShowNumberRow) { scope.launch { repo.setKeyboardShowNumberRow(it) } }
-        SwitchRow("Show system keys", settings.keyboardShowSystemKeys) { scope.launch { repo.setKeyboardShowSystemKeys(it) } }
-        SwitchRow("Automatically show for text fields", settings.autoShowKeyboardOnTextField) { scope.launch { repo.setAutoShowKeyboardOnTextField(it) } }
-        Text("Keyboard color", style = MaterialTheme.typography.bodyMedium)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            listOf(
-                0xFF202124.toInt() to "Dark",
-                0xFF263238.toInt() to "Blue gray",
-                0xFF3E2723.toInt() to "Brown",
-                0xFF1B5E20.toInt() to "Green",
-                0xFF006064.toInt() to "Cyan",
-                0xFF311B92.toInt() to "Purple",
-                0xFF880E4F.toInt() to "Pink",
-                0xFF37474F.toInt() to "Slate",
-            ).forEach { (color, label) ->
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { scope.launch { repo.setKeyboardColor(color) } },
-                ) {
-                    Box(
-                        Modifier.width(52.dp).height(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(color))
-                            .then(if (settings.keyboardColor == color) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier),
-                    )
-                    Text(label, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-        OutlinedTextField(
-            value = keyboardTestText,
-            onValueChange = { keyboardTestText = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Keyboard input test") },
-            placeholder = { Text("Activate Keyboard Mode and type here") },
-        )
-        
         Spacer(Modifier.height(16.dp))
         Text("Movement", style = MaterialTheme.typography.titleMedium)
         SliderRow(
@@ -428,6 +387,55 @@ private fun SettingsTab(
         SwitchRow("Start in mouse mode", settings.startInMouseMode) { scope.launch { repo.setStartInMouseMode(it) } }
         
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun KeyboardSettingsTab(
+    modifier: Modifier,
+    settings: Settings,
+    repo: SettingsRepository,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    var keyboardTestText by remember { mutableStateOf("") }
+    Column(
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("Keyboard", style = MaterialTheme.typography.titleMedium)
+        SliderRow("Keyboard width", settings.keyboardWidthPercent, 40f..100f, { "${it.roundToInt()}%" }) { scope.launch { repo.setKeyboardWidthPercent(it) } }
+        SliderRow("Keyboard height", settings.keyboardHeightPercent, 25f..80f, { "${it.roundToInt()}%" }) { scope.launch { repo.setKeyboardHeightPercent(it) } }
+        SwitchRow("Position keyboard at top", settings.keyboardAtTop) { scope.launch { repo.setKeyboardAtTop(it) } }
+        SwitchRow("Show number row", settings.keyboardShowNumberRow) { scope.launch { repo.setKeyboardShowNumberRow(it) } }
+        SwitchRow("Show system keys", settings.keyboardShowSystemKeys) { scope.launch { repo.setKeyboardShowSystemKeys(it) } }
+        SwitchRow("Automatically show for text fields", settings.autoShowKeyboardOnTextField) { scope.launch { repo.setAutoShowKeyboardOnTextField(it) } }
+        Text("Keyboard color", style = MaterialTheme.typography.bodyMedium)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf(
+                0xFF202124.toInt() to "Dark", 0xFF263238.toInt() to "Blue gray",
+                0xFF3E2723.toInt() to "Brown", 0xFF1B5E20.toInt() to "Green",
+                0xFF006064.toInt() to "Cyan", 0xFF311B92.toInt() to "Purple",
+                0xFF880E4F.toInt() to "Pink", 0xFF37474F.toInt() to "Slate",
+            ).chunked(4).forEach { colors ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    colors.forEach { (color, label) ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { scope.launch { repo.setKeyboardColor(color) } }) {
+                            Box(Modifier.width(52.dp).height(36.dp).clip(RoundedCornerShape(8.dp)).background(Color(color)).then(if (settings.keyboardColor == color) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier))
+                            Text(label, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+        OutlinedTextField(
+            value = keyboardTestText,
+            onValueChange = { keyboardTestText = it },
+            modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
+                if (state.isFocused && settings.autoShowKeyboardOnTextField) GamepadMouseService.instance?.showKeyboardForFocusedField()
+            },
+            label = { Text("Keyboard input test") },
+            placeholder = { Text("Focus this field to test typing") },
+        )
     }
 }
 

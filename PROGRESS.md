@@ -35,7 +35,7 @@ Phase 2 input customization and keyboard-mode iteration.
 - Debug APK builds successfully with JDK 21.
 - Debug APK installs on Samsung Galaxy Z Fold 6 (`RFGL23YPJLR`).
 - Installed package: `com.droidforge.gamepadmouse.debug`.
-- Current debug version: `0.4.1-keyboard-toggle-debug (6)`.
+- Current debug version: `0.5.0-keyboard-controls-debug (7)`.
 - The focusable capture view now forwards controller key events to the service, fixing D-pad keyboard navigation.
 - A keyboard-mode binding toggles the keyboard off when pressed again.
 - Binding recording shows a prominent “Listening for controller input…” card while active.
@@ -45,6 +45,10 @@ Phase 2 input customization and keyboard-mode iteration.
 - Keyboard binding state resets across mode changes, preventing the toggle from becoming permanently latched.
 - Optional automatic keyboard display opens on focused editable fields, with suppression after manual hide.
 - Keyboard colors now include cyan, purple, pink, and slate presets.
+- Navigation now separates Mouse, Keyboard, Bindings, and General sections.
+- Keyboard-mode defaults are B = press selected key and A = hide; keyboard press/move/hide are bindable actions.
+- Keyboard overlay is a bounded touchable window, allowing finger taps on keys without blocking touches outside it.
+- Binding list includes a visible scroll hint panel.
 
 ## Next testing
 

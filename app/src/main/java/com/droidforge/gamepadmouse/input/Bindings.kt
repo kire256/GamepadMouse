@@ -27,6 +27,9 @@ enum class MouseAction(val label: String) {
     VOLUME_DOWN("Volume Down"),
     VOLUME_MUTE("Mute / Unmute"),
     KEYBOARD_MODE("Keyboard Mode"),
+    KEYBOARD_PRESS("Keyboard press"),
+    KEYBOARD_MOVE("Keyboard move position"),
+    KEYBOARD_HIDE("Keyboard hide"),
 }
 
 enum class ServiceMode { GAMEPAD, MOUSE, KEYBOARD }
@@ -45,7 +48,10 @@ object DefaultBindings {
 
     val detailed: List<ButtonBinding> = buttons.map { (keyCode, action) ->
         ButtonBinding(setOf(keyCode), action, setOf(BindingMode.MOUSE), 0L)
-    }
+    } + listOf(
+        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_B), MouseAction.KEYBOARD_PRESS, setOf(BindingMode.KEYBOARD), 0L),
+        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_A), MouseAction.KEYBOARD_HIDE, setOf(BindingMode.KEYBOARD), 0L),
+    )
 
     /** Default chord that flips GAMEPAD ⇄ MOUSE: Start + Select held together. */
     val toggleChord: Set<Int> = setOf(KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT)

@@ -10,6 +10,8 @@ import android.view.View
 class KeyboardOverlayView(context: Context) : View(context) {
     enum class KeyboardLayout { LETTERS, NUMBERS, SYMBOLS }
 
+    var onKeyPressed: ((String) -> Unit)? = null
+
     companion object {
         const val KEY_SHIFT = "⇧"
         const val KEY_CAPS = "CAPS"
@@ -99,6 +101,39 @@ class KeyboardOverlayView(context: Context) : View(context) {
         val rows = currentRows()
         selectedRow = selectedRow.coerceIn(0, rows.lastIndex)
         selectedCol = selectedCol.coerceIn(0, rows[selectedRow].lastIndex)
+    }
+
+    fun keyAt(x: Float, y: Float): String? {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (x !in 0f..w || y !in 0f..h) return null
+        val textAreaHeight = h * 0.14f
+        val keyboardTop = textAreaHeight + 8f
+        val keyboardBottom = h - 30f
+        if (y < keyboardTop || y > keyboardBottom) return null
+        val rows = currentRows()
+        val rowHeight = (keyboardBottom - keyboardTop) / rows.size
+        val rowIndex = ((y - keyboardTop) / rowHeight).toInt().coerceIn(0, rows.lastIndex)
+        val row = rows[rowIndex]
+        val keyWidth = (w - 20f) / row.size
+        val columnIndex = ((x - 10f) / keyWidth).toInt().coerceIn(0, row.lastIndex)
+        selectedRow = rowIndex
+        selectedCol = columnIndex
+        invalidate()
+        return row[columnIndex]
+    }
+
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (event.action == android.view.MotionEvent.ACTION_UP) {
+            keyAt(event.x, event.y)?.let { onKeyPressed?.invoke(it) }
+            performClick()
+        }
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
     }
 
     private fun currentRows(): List<Array<String>> {

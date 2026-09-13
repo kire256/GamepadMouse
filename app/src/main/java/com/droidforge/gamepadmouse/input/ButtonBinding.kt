@@ -1,6 +1,6 @@
 package com.droidforge.gamepadmouse.input
 
-enum class BindingMode { GAMEPAD, MOUSE }
+enum class BindingMode { GAMEPAD, MOUSE, KEYBOARD }
 
 data class ButtonBinding(
     val keyCodes: Set<Int>,
@@ -11,7 +11,7 @@ data class ButtonBinding(
     fun appliesIn(mode: ServiceMode): Boolean = when (mode) {
         ServiceMode.GAMEPAD -> BindingMode.GAMEPAD in modes
         ServiceMode.MOUSE -> BindingMode.MOUSE in modes
-        ServiceMode.KEYBOARD -> false
+        ServiceMode.KEYBOARD -> BindingMode.KEYBOARD in modes
     }
 }
 

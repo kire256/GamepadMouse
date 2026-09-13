@@ -232,6 +232,15 @@ class GamepadMouseService : AccessibilityService() {
 
     fun toggleMode() = setMode(if (_mode.value == ServiceMode.MOUSE) ServiceMode.GAMEPAD else ServiceMode.MOUSE)
 
+    fun showKeyboardForFocusedField() {
+        if (settings.autoShowKeyboardOnTextField && _mode.value == ServiceMode.MOUSE) {
+            scope.launch {
+                kotlinx.coroutines.delay(120)
+                setMode(ServiceMode.KEYBOARD)
+            }
+        }
+    }
+
     fun setMode(newMode: ServiceMode) {
         if (_mode.value == newMode) return
         bindingMatcher.reset()
@@ -436,24 +445,26 @@ class GamepadMouseService : AccessibilityService() {
         if (keyboardOverlay != null) return
         
         val kbView = KeyboardOverlayView(this)
-        kbView.widthPercent = settings.keyboardWidthPercent
-        kbView.heightPercent = settings.keyboardHeightPercent
-        kbView.atTop = settings.keyboardAtTop
+        kbView.widthPercent = 100f
+        kbView.heightPercent = 100f
+        kbView.atTop = true
         kbView.showNumberRow = settings.keyboardShowNumberRow
         kbView.showSystemKeys = settings.keyboardShowSystemKeys
         kbView.keyboardColor = settings.keyboardColor
+        kbView.onKeyPressed = ::activateKeyboardKey
         val captureView = JoystickCaptureView(this, ::onJoystick, ::onCapturedKeyEvent)
+        val keyboardWidth = (displayW * settings.keyboardWidthPercent / 100f).toInt()
+        val keyboardHeight = (displayH * settings.keyboardHeightPercent / 100f).toInt()
         val kbLp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            keyboardWidth,
+            keyboardHeight,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
+            gravity = (if (settings.keyboardAtTop) Gravity.TOP else Gravity.BOTTOM) or Gravity.CENTER_HORIZONTAL
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -565,17 +576,17 @@ class GamepadMouseService : AccessibilityService() {
                 }
                 
                 if (_mode.value == ServiceMode.KEYBOARD) {
+                    if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
                     bindingMatcher.keyDown(code)
-                    val keyboardToggle = s.detailedBindings
-                        .filter { it.action == MouseAction.KEYBOARD_MODE }
-                        .sortedByDescending { it.keyCodes.size }
-                        .firstOrNull { bindingMatcher.isHeld(it) }
-                    if (keyboardToggle != null) {
-                        bindingMatcher.markFired(keyboardToggle)
-                        setMode(ServiceMode.MOUSE)
+                    val keyboardBindings = s.detailedBindings.filter { it.appliesIn(ServiceMode.KEYBOARD) }
+                    val matched = bindingMatcher.matching(keyboardBindings, ServiceMode.KEYBOARD)
+                    if (matched.isNotEmpty()) {
+                        matched.forEach { binding ->
+                            bindingMatcher.markFired(binding)
+                            executeAction(binding.action)
+                        }
                         return true
                     }
-                    if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
                     handleKeyboardButtonDown(code)
                     return DefaultBindings.isGamepadKey(code)
                 }
@@ -659,6 +670,17 @@ class GamepadMouseService : AccessibilityService() {
                 }
                 setMode(ModeTransitions.keyboardActionTarget(_mode.value))
             }
+            MouseAction.KEYBOARD_PRESS -> if (_mode.value == ServiceMode.KEYBOARD) {
+                keyboardOverlay?.getCurrentSelectedKey()?.let(::activateKeyboardKey)
+            }
+            MouseAction.KEYBOARD_MOVE -> if (_mode.value == ServiceMode.KEYBOARD) {
+                keyboardOverlay?.let { kb ->
+                    scope.launch { repo.setKeyboardAtTop(!settings.keyboardAtTop) }
+                    setMode(ServiceMode.MOUSE)
+                    scope.launch { kotlinx.coroutines.delay(100); setMode(ServiceMode.KEYBOARD) }
+                }
+            }
+            MouseAction.KEYBOARD_HIDE -> if (_mode.value == ServiceMode.KEYBOARD) setMode(ServiceMode.MOUSE)
             MouseAction.NONE -> Unit
         }
     }
@@ -670,24 +692,7 @@ class GamepadMouseService : AccessibilityService() {
             KeyboardCommand.DOWN -> kb.moveSelection(1, 0)
             KeyboardCommand.LEFT -> kb.moveSelection(0, -1)
             KeyboardCommand.RIGHT -> kb.moveSelection(0, 1)
-            KeyboardCommand.SELECT -> {
-                when (val key = kb.getCurrentSelectedKey()) {
-                    KeyboardOverlayView.KEY_SHIFT -> kb.shiftEnabled = !kb.shiftEnabled
-                    KeyboardOverlayView.KEY_CAPS -> kb.capsLockEnabled = !kb.capsLockEnabled
-                    KeyboardOverlayView.KEY_BACKSPACE -> backspaceText(kb)
-                    KeyboardOverlayView.KEY_SPACE -> appendText(kb, " ")
-                    KeyboardOverlayView.KEY_ENTER -> appendText(kb, "\n")
-                    KeyboardOverlayView.KEY_POSITION -> {
-                        kb.atTop = !kb.atTop
-                        scope.launch { repo.setKeyboardAtTop(kb.atTop) }
-                    }
-                    KeyboardOverlayView.KEY_HIDE -> setMode(ServiceMode.MOUSE)
-                    else -> {
-                        appendText(kb, kb.displayCharacter(key))
-                        kb.consumeOneShotShift()
-                    }
-                }
-            }
+            KeyboardCommand.SELECT -> activateKeyboardKey(kb.getCurrentSelectedKey())
             KeyboardCommand.BACKSPACE -> backspaceText(kb)
             KeyboardCommand.SPACE -> appendText(kb, " ")
             KeyboardCommand.SHIFT -> {
@@ -723,6 +728,30 @@ class GamepadMouseService : AccessibilityService() {
         // No-op for now, all actions happen on button down
     }
     
+    private fun activateKeyboardKey(key: String) {
+        val kb = keyboardOverlay ?: return
+        when (key) {
+            KeyboardOverlayView.KEY_SHIFT -> kb.shiftEnabled = !kb.shiftEnabled
+            KeyboardOverlayView.KEY_CAPS -> kb.capsLockEnabled = !kb.capsLockEnabled
+            KeyboardOverlayView.KEY_BACKSPACE -> backspaceText(kb)
+            KeyboardOverlayView.KEY_SPACE -> appendText(kb, " ")
+            KeyboardOverlayView.KEY_ENTER -> appendText(kb, "\n")
+            KeyboardOverlayView.KEY_POSITION -> {
+                scope.launch { repo.setKeyboardAtTop(!settings.keyboardAtTop) }
+                setMode(ServiceMode.MOUSE)
+                scope.launch {
+                    kotlinx.coroutines.delay(100)
+                    setMode(ServiceMode.KEYBOARD)
+                }
+            }
+            KeyboardOverlayView.KEY_HIDE -> setMode(ServiceMode.MOUSE)
+            else -> {
+                appendText(kb, kb.displayCharacter(key))
+                kb.consumeOneShotShift()
+            }
+        }
+    }
+
     private fun appendText(kb: KeyboardOverlayView, text: String) {
         val updated = kb.currentText + text
         if (setFocusedText(updated)) kb.currentText = updated

@@ -85,6 +85,17 @@ fun BindingsScreen(settings: Settings, repo: SettingsRepository, scope: kotlinx.
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                "↕ Scroll to see all bindings",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
         settings.detailedBindings.forEach { binding ->
             BindingRow(binding = binding, onClick = { editing = binding })
         }
@@ -195,6 +206,7 @@ private fun BindingEditorDialog(
                 Text("Active modes", style = MaterialTheme.typography.titleSmall)
                 ModeCheck("Mouse mode", BindingMode.MOUSE, modes) { modes = it }
                 ModeCheck("Gamepad mode", BindingMode.GAMEPAD, modes) { modes = it }
+                ModeCheck("Keyboard mode", BindingMode.KEYBOARD, modes) { modes = it }
 
                 HorizontalDivider()
                 Text("Hold delay: ${hold.roundToInt()} ms", style = MaterialTheme.typography.titleSmall)
