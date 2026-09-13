@@ -165,42 +165,34 @@ class CursorOverlayView(context: Context) : View(context) {
     }
     
     private fun drawTriangle(canvas: Canvas, x: Float, y: Float) {
-        // Rounded triangle pointing upper-left (like the image)
+        // Simple rounded triangle with 3 sides pointing upper-left
         val s = sizePx * cursorSizeMultiplier
         arrow.reset()
         
-        // Start at the sharp tip (upper left)
+        // Start at the sharp tip (upper left point where cursor actually is)
         arrow.moveTo(x, y)
         
-        // Top edge going to upper-right with rounded corner
-        arrow.lineTo(x + s * 0.6f, y)
-        
-        // Rounded top-right corner
+        // Line to bottom-left corner with slight rounding
         arrow.cubicTo(
-            x + s * 0.7f, y,
-            x + s * 0.75f, y + s * 0.1f,
-            x + s * 0.75f, y + s * 0.2f
-        )
-        
-        // Right edge going down
-        arrow.lineTo(x + s * 0.75f, y + s * 0.6f)
-        
-        // Rounded bottom-right corner  
-        arrow.cubicTo(
-            x + s * 0.75f, y + s * 0.7f,
-            x + s * 0.7f, y + s * 0.75f,
-            x + s * 0.6f, y + s * 0.75f
-        )
-        
-        // Bottom edge going left
-        arrow.lineTo(x + s * 0.2f, y + s * 0.75f)
-        
-        // Rounded bottom-left corner back to tip
-        arrow.cubicTo(
-            x + s * 0.1f, y + s * 0.75f,
+            x, y + s * 0.3f,
             x, y + s * 0.6f,
-            x, y
+            x + s * 0.1f, y + s * 0.8f  // Bottom-left rounded corner
         )
+        
+        // Line across bottom to bottom-right with rounding
+        arrow.cubicTo(
+            x + s * 0.3f, y + s * 0.9f,
+            x + s * 0.5f, y + s * 0.9f,
+            x + s * 0.7f, y + s * 0.8f  // Bottom-right rounded corner
+        )
+        
+        // Line back up to the tip with rounding
+        arrow.cubicTo(
+            x + s * 0.8f, y + s * 0.6f,
+            x + s * 0.5f, y + s * 0.2f,
+            x, y  // Back to tip
+        )
+        
         arrow.close()
         
         canvas.save(); canvas.translate(2f, 3f); canvas.drawPath(arrow, shadow); canvas.restore()
