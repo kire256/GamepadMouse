@@ -105,6 +105,7 @@ class GamepadMouseService : AccessibilityService() {
     private var overlay: CursorOverlayView? = null
     private var keyboardOverlay: KeyboardOverlayView? = null
     private var keyboardTargetNode: android.view.accessibility.AccessibilityNodeInfo? = null
+    private var suppressAutoKeyboardUntil = 0L
     
     // Cursor auto-hide timer
     private var hideJob: kotlinx.coroutines.Job? = null
@@ -212,7 +213,13 @@ class GamepadMouseService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event?.source?.let { source ->
-            if (source.isEditable && source.isFocused) keyboardTargetNode = source
+            if (source.isEditable && source.isFocused) {
+                keyboardTargetNode = source
+                if (settings.autoShowKeyboardOnTextField &&
+                    _mode.value == ServiceMode.MOUSE &&
+                    android.os.SystemClock.uptimeMillis() >= suppressAutoKeyboardUntil
+                ) setMode(ServiceMode.KEYBOARD)
+            }
         }
         // Reclaim joystick-capture focus on window state changes.
         if (_mode.value == ServiceMode.MOUSE || _mode.value == ServiceMode.KEYBOARD) {
@@ -227,6 +234,9 @@ class GamepadMouseService : AccessibilityService() {
 
     fun setMode(newMode: ServiceMode) {
         if (_mode.value == newMode) return
+        bindingMatcher.reset()
+        bindingHoldJobs.values.forEach { it.cancel() }
+        bindingHoldJobs.clear()
         _mode.value = newMode
         heldModifiers.clear()
         moveX = 0f; moveY = 0f; scrollX = 0f; scrollY = 0f
@@ -346,6 +356,7 @@ class GamepadMouseService : AccessibilityService() {
             repo.setKeyboardShowNumberRow(newSettings.keyboardShowNumberRow)
             repo.setKeyboardShowSystemKeys(newSettings.keyboardShowSystemKeys)
             repo.setKeyboardColor(newSettings.keyboardColor)
+            repo.setAutoShowKeyboardOnTextField(newSettings.autoShowKeyboardOnTextField)
             
             Log.i(TAG, "Switched to profile: $deviceName ($deviceId)")
         }
@@ -560,8 +571,8 @@ class GamepadMouseService : AccessibilityService() {
                         .sortedByDescending { it.keyCodes.size }
                         .firstOrNull { bindingMatcher.isHeld(it) }
                     if (keyboardToggle != null) {
-                        setMode(ServiceMode.MOUSE)
                         bindingMatcher.markFired(keyboardToggle)
+                        setMode(ServiceMode.MOUSE)
                         return true
                     }
                     if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
@@ -575,8 +586,8 @@ class GamepadMouseService : AccessibilityService() {
                 bindingMatcher.matching(modeBindings, _mode.value).forEach { binding ->
                     bindingHoldJobs[binding]?.cancel()
                     if (binding.holdDurationMs <= 0L) {
-                        executeAction(binding.action)
                         bindingMatcher.markFired(binding)
+                        executeAction(binding.action)
                     } else {
                         bindingHoldJobs[binding] = scope.launch {
                             kotlinx.coroutines.delay(binding.holdDurationMs)
@@ -642,7 +653,12 @@ class GamepadMouseService : AccessibilityService() {
             MouseAction.VOLUME_UP -> adjustVolume(AudioManager.ADJUST_RAISE)
             MouseAction.VOLUME_DOWN -> adjustVolume(AudioManager.ADJUST_LOWER)
             MouseAction.VOLUME_MUTE -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE)
-            MouseAction.KEYBOARD_MODE -> setMode(ModeTransitions.keyboardActionTarget(_mode.value))
+            MouseAction.KEYBOARD_MODE -> {
+                if (_mode.value == ServiceMode.KEYBOARD) {
+                    suppressAutoKeyboardUntil = android.os.SystemClock.uptimeMillis() + 1500L
+                }
+                setMode(ModeTransitions.keyboardActionTarget(_mode.value))
+            }
             MouseAction.NONE -> Unit
         }
     }

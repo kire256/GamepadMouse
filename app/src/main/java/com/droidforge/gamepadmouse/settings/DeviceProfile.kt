@@ -40,6 +40,7 @@ data class ProfileSettings(
     val keyboardShowNumberRow: Boolean = true,
     val keyboardShowSystemKeys: Boolean = true,
     val keyboardColor: Int = 0xFF202124.toInt(),
+    val autoShowKeyboardOnTextField: Boolean = false,
 )
 
 fun Settings.toProfileSettings(): ProfileSettings = ProfileSettings(
@@ -68,6 +69,7 @@ fun Settings.toProfileSettings(): ProfileSettings = ProfileSettings(
     keyboardShowNumberRow = keyboardShowNumberRow,
     keyboardShowSystemKeys = keyboardShowSystemKeys,
     keyboardColor = keyboardColor,
+    autoShowKeyboardOnTextField = autoShowKeyboardOnTextField,
 )
 
 fun ProfileSettings.toSettings(): Settings {
@@ -104,5 +106,6 @@ fun ProfileSettings.toSettings(): Settings {
         keyboardShowNumberRow = keyboardShowNumberRow,
         keyboardShowSystemKeys = keyboardShowSystemKeys,
         keyboardColor = keyboardColor,
+        autoShowKeyboardOnTextField = autoShowKeyboardOnTextField,
     )
 }

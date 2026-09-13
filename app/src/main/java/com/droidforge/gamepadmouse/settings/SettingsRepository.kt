@@ -44,6 +44,7 @@ data class Settings(
     val keyboardShowNumberRow: Boolean = true,
     val keyboardShowSystemKeys: Boolean = true,
     val keyboardColor: Int = 0xFF202124.toInt(),
+    val autoShowKeyboardOnTextField: Boolean = false,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gamepad_mouse")
@@ -76,6 +77,7 @@ class SettingsRepository(private val context: Context) {
         val KEYBOARD_NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
         val KEYBOARD_SYSTEM_KEYS = booleanPreferencesKey("keyboard_system_keys")
         val KEYBOARD_COLOR = intPreferencesKey("keyboard_color")
+        val AUTO_SHOW_KEYBOARD = booleanPreferencesKey("auto_show_keyboard_on_text_field")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
@@ -115,6 +117,7 @@ class SettingsRepository(private val context: Context) {
             keyboardShowNumberRow = p[Keys.KEYBOARD_NUMBER_ROW] ?: true,
             keyboardShowSystemKeys = p[Keys.KEYBOARD_SYSTEM_KEYS] ?: true,
             keyboardColor = p[Keys.KEYBOARD_COLOR] ?: 0xFF202124.toInt(),
+            autoShowKeyboardOnTextField = p[Keys.AUTO_SHOW_KEYBOARD] ?: false,
         )
     }
 
@@ -145,6 +148,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setKeyboardShowNumberRow(value: Boolean) = context.dataStore.edit { it[Keys.KEYBOARD_NUMBER_ROW] = value }
     suspend fun setKeyboardShowSystemKeys(value: Boolean) = context.dataStore.edit { it[Keys.KEYBOARD_SYSTEM_KEYS] = value }
     suspend fun setKeyboardColor(value: Int) = context.dataStore.edit { it[Keys.KEYBOARD_COLOR] = value }
+    suspend fun setAutoShowKeyboardOnTextField(value: Boolean) = context.dataStore.edit { it[Keys.AUTO_SHOW_KEYBOARD] = value }
 
     companion object {
         fun encodeBindings(b: Map<Int, MouseAction>): String =

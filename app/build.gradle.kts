@@ -13,8 +13,8 @@ android {
         applicationId = "com.droidforge.gamepadmouse"
         minSdk = 26          // dispatchGesture + TYPE_ACCESSIBILITY_OVERLAY (API 24+); 26 for stable overlay behavior
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.4.0-keyboard-options"
+        versionCode = 6
+        versionName = "0.4.1-keyboard-toggle"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

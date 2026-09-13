@@ -84,4 +84,9 @@ class BindingMatcher {
     }
 
     fun isHeld(binding: ButtonBinding): Boolean = binding.keyCodes.all { it in heldKeys }
+
+    fun reset() {
+        heldKeys.clear()
+        firedBindings.clear()
+    }
 }

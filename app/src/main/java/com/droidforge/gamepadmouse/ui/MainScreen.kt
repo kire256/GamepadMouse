@@ -346,6 +346,7 @@ private fun SettingsTab(
         SwitchRow("Position keyboard at top", settings.keyboardAtTop) { scope.launch { repo.setKeyboardAtTop(it) } }
         SwitchRow("Show number row", settings.keyboardShowNumberRow) { scope.launch { repo.setKeyboardShowNumberRow(it) } }
         SwitchRow("Show system keys", settings.keyboardShowSystemKeys) { scope.launch { repo.setKeyboardShowSystemKeys(it) } }
+        SwitchRow("Automatically show for text fields", settings.autoShowKeyboardOnTextField) { scope.launch { repo.setAutoShowKeyboardOnTextField(it) } }
         Text("Keyboard color", style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             listOf(
@@ -353,6 +354,10 @@ private fun SettingsTab(
                 0xFF263238.toInt() to "Blue gray",
                 0xFF3E2723.toInt() to "Brown",
                 0xFF1B5E20.toInt() to "Green",
+                0xFF006064.toInt() to "Cyan",
+                0xFF311B92.toInt() to "Purple",
+                0xFF880E4F.toInt() to "Pink",
+                0xFF37474F.toInt() to "Slate",
             ).forEach { (color, label) ->
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
