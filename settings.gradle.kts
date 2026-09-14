@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "GamepadMouse"
 include(":app")
+include(":keyboard")
