@@ -21,10 +21,10 @@ Phase 2 input customization and keyboard-mode iteration.
 
 ## Keyboard mode controls
 
-- D-pad: move selection
-- B: type selected key (press)
-- A: hide keyboard (return to mouse)
-- X: backspace
+- D-pad: move selection (hat-axis motion via service `onMotionEvent`, API 34+)
+- A: type selected key (press)
+- B: close keyboard (hide)
+- X: delete / backspace
 - Y: shift
 - LB/RB: change layout
 - Start: enter

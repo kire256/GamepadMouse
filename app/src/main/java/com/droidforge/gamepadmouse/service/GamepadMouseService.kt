@@ -108,6 +108,12 @@ class GamepadMouseService : AccessibilityService() {
     private var keyboardOverlay: KeyboardOverlayView? = null
     private var keyboardTargetNode: android.view.accessibility.AccessibilityNodeInfo? = null
     private var suppressAutoKeyboardUntil = 0L
+    /** True while an editable field holds input focus (tracked from a11y focus events). */
+    private var editableFieldFocused = false
+    /** True while the capture window is demoted to NOT_FOCUSABLE so the system IME can open. */
+    private var imeShield = false
+    private var captureParams: WindowManager.LayoutParams? = null
+    private var savedImeShowMode = -1
     
     // Cursor auto-hide timer
     private var hideJob: kotlinx.coroutines.Job? = null
@@ -145,6 +151,9 @@ class GamepadMouseService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         _running.value = true
+        // API 34+: receive joystick/hat motion directly — no focusable capture
+        // window needed (which stole window focus and broke the system IME).
+        if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(true)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         // Cache real display size for use before overlay gets laid out
         @Suppress("DEPRECATION")
@@ -207,7 +216,7 @@ class GamepadMouseService : AccessibilityService() {
         removeOverlay()
         removeKeyboardOverlay()
         scope.cancel()
-        audioManager.release()
+        if (::audioManager.isInitialized) audioManager.release()
         instance = null
         _running.value = false
         _mode.value = ServiceMode.GAMEPAD
@@ -215,20 +224,78 @@ class GamepadMouseService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event?.source?.let { source ->
+            // Samsung often delivers the focused editable as the source of
+            // WINDOW_CONTENT_CHANGED events, so accept ANY event type here (like the
+            // original auto-show path) — not just TYPE_VIEW_FOCUSED.
             if (source.isEditable && source.isFocused) {
-                keyboardTargetNode = source
-                if (settings.autoShowKeyboardOnTextField &&
-                    _mode.value == ServiceMode.MOUSE &&
-                    android.os.SystemClock.uptimeMillis() >= suppressAutoKeyboardUntil
-                ) setMode(ServiceMode.KEYBOARD)
+                if (!editableFieldFocused) {
+                    editableFieldFocused = true
+                    keyboardTargetNode = source
+                    Log.d(TAG, "editable focus detected (eventType=${event.eventType})")
+                }
+                if (_mode.value == ServiceMode.MOUSE) {
+                    if (settings.autoShowKeyboardOnTextField &&
+                        android.os.SystemClock.uptimeMillis() >= suppressAutoKeyboardUntil
+                    ) {
+                        setMode(ServiceMode.KEYBOARD)
+                    } else if (!imeShield) {
+                        // Text box tapped by hand in mouse mode: demote the capture window
+                        // to NOT_FOCUSABLE so window focus returns to the app, then send a
+                        // synthetic tap on the field to trigger the native
+                        // showSoftInputOnFocus path (opens the SYSTEM keyboard).
+                        imeShield = true
+                        setCaptureWindowFocusable(false)
+                        source.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+                        scheduleImeTap(source)
+                    }
+                }
+            } else if (event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
+                editableFieldFocused = false
             }
         }
-        // Reclaim joystick-capture focus on window state changes.
-        if (_mode.value == ServiceMode.MOUSE || _mode.value == ServiceMode.KEYBOARD) {
+        // Reclaim joystick-capture focus ONLY in mouse mode and only while no editable
+        // field holds input focus. Reclaiming while a text field is focused steals focus
+        // from the app, which blocks ACTION_SET_TEXT (typed text never reaches the field)
+        // and prevents the system keyboard from opening.
+        if (_mode.value == ServiceMode.MOUSE && !editableFieldFocused) {
             joystickCapture?.post { joystickCapture?.reclaimFocus() }
         }
     }
     override fun onInterrupt() { /* not needed */ }
+
+    /** Toggle global joystick motion delivery. Off in GAMEPAD mode so games receive input. */
+    private fun enableMotionEventSources(enable: Boolean) {
+        try {
+            serviceInfo = serviceInfo.apply {
+                motionEventSources = if (enable) {
+                    InputDevice.SOURCE_JOYSTICK or InputDevice.SOURCE_GAMEPAD or InputDevice.SOURCE_DPAD
+                } else 0
+            }
+            Log.i(TAG, "motionEventSources enabled=$enable")
+        } catch (t: Throwable) {
+            Log.w(TAG, "motionEventSources: ${t.message}")
+        }
+    }
+
+    /** Joystick/hat events delivered straight to the service (API 34+, no window). */
+    override fun onMotionEvent(event: android.view.MotionEvent) {
+        when (_mode.value) {
+            ServiceMode.MOUSE -> onJoystick(event)
+            ServiceMode.KEYBOARD -> {
+                val kb = keyboardOverlay ?: return
+                val hx = event.getAxisValue(android.view.MotionEvent.AXIS_HAT_X)
+                val hy = event.getAxisValue(android.view.MotionEvent.AXIS_HAT_Y)
+                when (keyboardHatNavigation.update(hx, hy)) {
+                    KeyboardCommand.UP -> kb.moveSelection(-1, 0)
+                    KeyboardCommand.DOWN -> kb.moveSelection(1, 0)
+                    KeyboardCommand.LEFT -> kb.moveSelection(0, -1)
+                    KeyboardCommand.RIGHT -> kb.moveSelection(0, 1)
+                    else -> Unit
+                }
+            }
+            ServiceMode.GAMEPAD -> Unit
+        }
+    }
 
     // ---------------------------------------------------------------- mode
 
@@ -257,19 +324,25 @@ class GamepadMouseService : AccessibilityService() {
                 removeKeyboardOverlay()
                 addOverlay()
                 scheduleFrame()
+                editableFieldFocused = false  // full mouse control; stop protecting field focus
+                imeShield = false
+                if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(true)
+                setSystemImeHidden(false)
                 audioManager.play(AudioCue.MODE_SWITCH_MOUSE)
             }
             ServiceMode.GAMEPAD -> {
                 removeOverlay()
                 removeKeyboardOverlay()
+                if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(false)  // pass sticks to games
+                setSystemImeHidden(false)
                 audioManager.play(AudioCue.MODE_SWITCH_GAMEPAD)
             }
             ServiceMode.KEYBOARD -> {
-                keyboardTargetNode = rootInActiveWindow
-                    ?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
-                    ?: keyboardTargetNode
+                keyboardTargetNode = findEditableInputNode()
                 removeOverlay()
                 addKeyboardOverlay()
+                if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(true)
+                setSystemImeHidden(true)  // our overlay replaces the system IME
                 audioManager.play(AudioCue.MODE_SWITCH_MOUSE)
             }
         }
@@ -405,7 +478,7 @@ class GamepadMouseService : AccessibilityService() {
         // block the app) because TYPE_ACCESSIBILITY_OVERLAY touch events are handled by
         // the service, not consumed by the view.
         // Being full-screen AND focusable means Android never hands focus back to the app.
-        val captureView = JoystickCaptureView(this, ::onJoystick, ::onCapturedKeyEvent)
+        val captureView = JoystickCaptureView(this, ::onJoystick, ::onCapturedKeyEvent, ::onCaptureWindowFocusLost)
         val captureLp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -426,10 +499,15 @@ class GamepadMouseService : AccessibilityService() {
             // Note: Manual tap detection disabled for now to avoid blocking touch input
             // The cursor overlay must have FLAG_NOT_TOUCHABLE to let touches pass through
             
-            windowManager.addView(captureView, captureLp)
-            joystickCapture = captureView
-            captureView.post { captureView.requestFocus() }
-            Log.i(TAG, "overlay added")
+            // API 34+: sticks arrive via onMotionEvent — no capture window (it steals
+            // window focus and blocks the system IME). Legacy: capture window required.
+            if (Build.VERSION.SDK_INT < 34) {
+                windowManager.addView(captureView, captureLp)
+                joystickCapture = captureView
+                captureParams = captureLp
+                captureView.post { captureView.requestFocus() }
+            }
+            Log.i(TAG, "overlay added (captureWindow=${joystickCapture != null})")
         } catch (t: Throwable) {
             Log.e(TAG, "addOverlay failed", t)
         }
@@ -440,22 +518,93 @@ class GamepadMouseService : AccessibilityService() {
         overlay = null
         joystickCapture?.let { runCatching { windowManager.removeViewImmediate(it) } }
         joystickCapture = null
+        captureParams = null
         frameScheduled = false
+    }
+
+    /**
+     * Toggles the capture window between focusable (joystick capture) and
+     * NOT_FOCUSABLE (lets the app window take focus so the system IME shows).
+     * clearFocus() alone never moves WINDOW focus — only a flag change does.
+     */
+    private fun setCaptureWindowFocusable(focusable: Boolean) {
+        val view = joystickCapture ?: return
+        val lp = captureParams ?: return
+        val newFlags = if (focusable) lp.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+        else lp.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        if (newFlags != lp.flags) {
+            lp.flags = newFlags
+            runCatching { windowManager.updateViewLayout(view, lp) }
+        }
+        if (!focusable) view.clearFocus()
+        Log.d(TAG, "capture focusable=$focusable")
+    }
+
+    /**
+     * Called by the capture view when it loses WINDOW focus — i.e. the user just
+     * tapped something in the app underneath. Shield immediately: demote the capture
+     * window so the app keeps focus and the system IME can open. (Waiting for an
+     * accessibility focus event doesn't work — the per-frame focus reclaim steals
+     * window focus back before the event can be delivered.)
+     */
+    private fun onCaptureWindowFocusLost() {
+        if (_mode.value != ServiceMode.MOUSE || imeShield) return
+        imeShield = true
+        editableFieldFocused = true  // stop the frame loop from reclaiming focus
+        setCaptureWindowFocusable(false)
+        Log.d(TAG, "app took window focus -> ime shield on")
+    }
+
+    /** Hide/show the system IME (used while our overlay keyboard is up). */
+    private fun setSystemImeHidden(hidden: Boolean) {
+        try {
+            val skc = softKeyboardController
+            if (hidden) {
+                savedImeShowMode = skc.showMode
+                skc.setShowMode(AccessibilityService.SHOW_MODE_HIDDEN)
+            } else if (savedImeShowMode >= 0) {
+                skc.setShowMode(savedImeShowMode)
+                savedImeShowMode = -1
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "softKeyboardController: ${t.message}")
+        }
+    }
+
+    /**
+     * After demoting the capture window, tap the field's center through the gesture
+     * pipeline. The touch lands on the app's EditText as a real user tap, so the
+     * system IME opens via the normal showSoftInputOnFocus flow.
+     */
+    private fun scheduleImeTap(node: android.view.accessibility.AccessibilityNodeInfo) {
+        val rect = android.graphics.Rect()
+        node.getBoundsInScreen(rect)
+        if (rect.isEmpty) return
+        val cx = rect.exactCenterX().coerceIn(0f, displayW)
+        val cy = rect.exactCenterY().coerceIn(0f, displayH)
+        scope.launch {
+            kotlinx.coroutines.delay(150)  // let window focus settle after the flag flip
+            val path = Path().apply { moveTo(cx, cy) }
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
+                .build()
+            val ok = dispatchGesture(gesture, null, null)
+            Log.d(TAG, "ime tap at ($cx,$cy) dispatched=$ok")
+        }
     }
     
     private fun addKeyboardOverlay() {
         if (keyboardOverlay != null) return
-        
+       
         val kbView = KeyboardOverlayView(this)
         kbView.widthPercent = 100f
         kbView.heightPercent = 100f
-        kbView.atTop = true
+        kbView.atTop = settings.keyboardAtTop
         kbView.showNumberRow = settings.keyboardShowNumberRow
         kbView.showSystemKeys = settings.keyboardShowSystemKeys
         kbView.keyboardColor = settings.keyboardColor
         kbView.onKeyPressed = ::activateKeyboardKey
         kbView.audioManager = audioManager
-        val captureView = JoystickCaptureView(this, ::onJoystick, ::onCapturedKeyEvent)
         val keyboardWidth = (displayW * settings.keyboardWidthPercent / 100f).toInt()
         val keyboardHeight = (displayH * settings.keyboardHeightPercent / 100f).toInt()
         val kbLp = WindowManager.LayoutParams(
@@ -477,24 +626,16 @@ class GamepadMouseService : AccessibilityService() {
         try {
             windowManager.addView(kbView, kbLp)
             keyboardOverlay = kbView
-            val captureLp = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-                PixelFormat.TRANSLUCENT,
-            ).apply { gravity = Gravity.TOP or Gravity.START }
-            windowManager.addView(captureView, captureLp)
-            joystickCapture = captureView
-            captureView.post { captureView.requestFocus() }
-            Log.i(TAG, "keyboard overlay added")
+            // NOTE: no focusable capture window in keyboard mode. It would steal window
+            // focus from the app, which makes ACTION_SET_TEXT fail (typed text never
+            // reaches the field). Gamepad/d-pad buttons still arrive via onKeyEvent
+            // (system-wide key filtering needs no window focus).
+            Log.i(TAG, "keyboard overlay added (no capture window; app keeps focus)")
         } catch (t: Throwable) {
             Log.e(TAG, "addKeyboardOverlay failed", t)
         }
     }
-    
+
     private fun removeKeyboardOverlay() {
         keyboardOverlay?.let { runCatching { windowManager.removeViewImmediate(it) } }
         keyboardOverlay = null
@@ -531,6 +672,13 @@ class GamepadMouseService : AccessibilityService() {
         if (!fromGamepad && !KeyEvent.isGamepadButton(event.keyCode)) return false
 
         val code = event.keyCode
+        if (_mode.value == ServiceMode.MOUSE && imeShield && event.action == KeyEvent.ACTION_DOWN) {
+            // User grabbed the gamepad again: restore joystick capture focus.
+            imeShield = false
+            editableFieldFocused = false
+            setCaptureWindowFocusable(true)
+            joystickCapture?.requestFocus()
+        }
         
         // Chord recording mode intercepts everything
         if (_recordingChord.value) {
@@ -792,8 +940,9 @@ class GamepadMouseService : AccessibilityService() {
 
     private fun appendText(kb: KeyboardOverlayView, text: String) {
         val updated = kb.currentText + text
-        kb.currentText = updated
-        setFocusedText(updated)
+        // Only mirror the buffer once the field actually accepted the text, so a
+        // failed write doesn't show phantom characters above the keyboard.
+        if (setFocusedText(updated)) kb.currentText = updated
     }
 
     private fun backspaceText(kb: KeyboardOverlayView) {
@@ -803,16 +952,44 @@ class GamepadMouseService : AccessibilityService() {
     }
 
     private fun setFocusedText(text: String): Boolean {
-        val focused = keyboardTargetNode
-            ?: rootInActiveWindow?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
-            ?: return false
+        val node = findEditableInputNode() ?: return false
+        // ACTION_SET_TEXT only lands on the node holding input focus; nudge it first.
+        if (!node.isFocused) {
+            node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+        }
         val args = android.os.Bundle().apply {
             putCharSequence(
                 android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                 text,
             )
         }
-        return focused.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        val ok = node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        Log.d(TAG, "setFocusedText len=${text.length} ok=$ok")
+        return ok
+    }
+
+    /**
+     * Resolves the editable text target, preferring the node captured from the last
+     * focus event (refreshed), then scanning every window for the input-focused field.
+     * Cached nodes go stale quickly — never trust one across redraws.
+     */
+    private fun findEditableInputNode(): android.view.accessibility.AccessibilityNodeInfo? {
+        keyboardTargetNode?.let { cached ->
+            if (cached.refresh()) {
+                if (cached.isEditable) return cached
+            } else {
+                keyboardTargetNode = null  // stale handle — drop it
+            }
+        }
+        for (window in windows) {
+            val root = window.root ?: continue
+            val focused = root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focused != null && focused.isEditable) {
+                keyboardTargetNode = focused
+                return focused
+            }
+        }
+        return null
     }
 
     /** D-pad nudges the cursor a fixed step when no analog stick is present (e.g. INMO ring). */
@@ -860,6 +1037,12 @@ class GamepadMouseService : AccessibilityService() {
             val tx = lx; val ty = ly
             lx = rx; ly = ry; rx = tx; ry = ty
         }
+        if (_mode.value == ServiceMode.MOUSE && imeShield) {
+            imeShield = false
+            editableFieldFocused = false
+            setCaptureWindowFocusable(true)
+            joystickCapture?.requestFocus()
+        }
         // Hat switch (d-pad reported as axes) also moves the cursor.
         if (lx == 0f && ly == 0f && (hx != 0f || hy != 0f)) { lx = hx; ly = hy }
 
@@ -884,7 +1067,7 @@ class GamepadMouseService : AccessibilityService() {
     private fun onFrame(nowNs: Long) {
         frameScheduled = false
         val ov = overlay ?: return
-        joystickCapture?.reclaimFocus()
+        if (!editableFieldFocused) joystickCapture?.reclaimFocus()
         val s = settings
         val dt = if (lastFrameNs == 0L) 1f / 60f else ((nowNs - lastFrameNs) / 1_000_000_000f).coerceIn(0.001f, 0.1f)
         lastFrameNs = nowNs

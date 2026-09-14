@@ -8,8 +8,8 @@ class KeyboardInputRouterTest {
     @Test
     fun dpadAndFaceButtonsMapToKeyboardCommands() {
         assertEquals(KeyboardCommand.UP, KeyboardInputRouter.commandFor(KeyEvent.KEYCODE_DPAD_UP))
-        assertEquals(KeyboardCommand.EXIT, KeyboardInputRouter.commandFor(KeyEvent.KEYCODE_BUTTON_A))
-        assertEquals(KeyboardCommand.SELECT, KeyboardInputRouter.commandFor(KeyEvent.KEYCODE_BUTTON_B))
+        assertEquals(KeyboardCommand.SELECT, KeyboardInputRouter.commandFor(KeyEvent.KEYCODE_BUTTON_A))
+        assertEquals(KeyboardCommand.BACKSPACE, KeyboardInputRouter.commandFor(KeyEvent.KEYCODE_BUTTON_B))
         assertEquals(KeyboardCommand.SPACE, KeyboardInputRouter.commandFor(KeyEvent.KEYCODE_BUTTON_X))
         assertEquals(KeyboardCommand.SHIFT, KeyboardInputRouter.commandFor(KeyEvent.KEYCODE_BUTTON_Y))
         assertEquals(KeyboardCommand.PREVIOUS_LAYOUT, KeyboardInputRouter.commandFor(KeyEvent.KEYCODE_BUTTON_L1))

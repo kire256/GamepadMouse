@@ -212,7 +212,7 @@ class KeyboardOverlayView(context: Context) : View(context) {
                 canvas.drawText(label, keyRect.centerX(), keyRect.centerY() - (keyTextPaint.ascent() + keyTextPaint.descent()) / 2f, keyTextPaint)
             }
         }
-        canvas.drawText("D-pad: move · A: select · LB/RB: layout", w / 2f, h - 7f, labelPaint)
+        canvas.drawText("D-pad: move · A: type · B: close · X: ⌫ · LB/RB: layout", w / 2f, h - 7f, labelPaint)
         canvas.restore()
     }
 }

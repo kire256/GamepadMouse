@@ -15,12 +15,17 @@ class BindingDefaultsTest {
         assertTrue(custom in merged)
         assertTrue(merged.any {
             it.action == MouseAction.KEYBOARD_PRESS &&
-                it.keyCodes == setOf(KeyEvent.KEYCODE_BUTTON_B) &&
+                it.keyCodes == setOf(KeyEvent.KEYCODE_BUTTON_A) &&
                 it.modes == setOf(BindingMode.KEYBOARD)
         })
         assertTrue(merged.any {
             it.action == MouseAction.KEYBOARD_HIDE &&
-                it.keyCodes == setOf(KeyEvent.KEYCODE_BUTTON_A) &&
+                it.keyCodes == setOf(KeyEvent.KEYCODE_BUTTON_B) &&
+                it.modes == setOf(BindingMode.KEYBOARD)
+        })
+        assertTrue(merged.any {
+            it.action == MouseAction.KEYBOARD_BACK &&
+                it.keyCodes == setOf(KeyEvent.KEYCODE_BUTTON_X) &&
                 it.modes == setOf(BindingMode.KEYBOARD)
         })
     }

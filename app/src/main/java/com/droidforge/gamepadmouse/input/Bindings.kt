@@ -48,10 +48,11 @@ object DefaultBindings {
     )
 
     private val keyboardDefaults = listOf(
-        // Erik's spec: B = press, A = hide (matches KeyboardInputRouter fallback)
-        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_A), MouseAction.KEYBOARD_HIDE, setOf(BindingMode.KEYBOARD), 0L),
+        // Erik's spec: A = type, B = close keyboard, X = delete (backspace).
+        // Y falls through to KeyboardInputRouter (shift); Select/Back hides too.
+        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_A), MouseAction.KEYBOARD_PRESS, setOf(BindingMode.KEYBOARD), 0L),
+        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_B), MouseAction.KEYBOARD_HIDE, setOf(BindingMode.KEYBOARD), 0L),
         ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_X), MouseAction.KEYBOARD_BACK, setOf(BindingMode.KEYBOARD), 0L),
-        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_B), MouseAction.KEYBOARD_PRESS, setOf(BindingMode.KEYBOARD), 0L),
     )
 
     val detailed: List<ButtonBinding> = buttons.map { (keyCode, action) ->

@@ -18,6 +18,7 @@ class JoystickCaptureView(
     context: Context,
     private val onJoystick: (MotionEvent) -> Boolean,
     private val onGamepadKey: ((KeyEvent) -> Boolean)? = null,
+    private val onWindowFocusLost: (() -> Unit)? = null,
 ) : SurfaceView(context), SurfaceHolder.Callback {
 
     private var lastReclaimMs = 0L
@@ -33,10 +34,16 @@ class JoystickCaptureView(
     }
 
     fun reclaimFocus() {
-        if (!hasFocus()) requestFocus()
+        // Gate the ENTIRE reclaim (not just the key dispatch). Calling requestFocus()
+        // at frame rate cancels pending window-focus transfers — the app window never
+        // gets focus when the user taps a text field, so the system IME can't open
+        // and we never see onWindowFocusChanged(false). 1s cadence leaves room for
+        // the transfer to complete; gamepad input stays responsive regardless
+        // (SurfaceView gets joystick MotionEvents via its own channel).
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastReclaimMs < 500L) return
+        if (now - lastReclaimMs < 1000L) return
         lastReclaimMs = now
+        if (!hasFocus()) requestFocus()
         val down = KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_UNKNOWN, 0, 0, -1, 0, KeyEvent.FLAG_SOFT_KEYBOARD)
         val up   = KeyEvent(now, now, KeyEvent.ACTION_UP,   KeyEvent.KEYCODE_UNKNOWN, 0, 0, -1, 0, KeyEvent.FLAG_SOFT_KEYBOARD)
         dispatchKeyEvent(down)
@@ -47,6 +54,7 @@ class JoystickCaptureView(
         super.onWindowFocusChanged(hasWindowFocus)
         Log.d("GamepadMouse", "JoyCap windowFocus=$hasWindowFocus")
         if (hasWindowFocus) requestFocus()
+        else onWindowFocusLost?.invoke()
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {

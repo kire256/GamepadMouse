@@ -24,8 +24,8 @@ object KeyboardInputRouter {
         KeyEvent.KEYCODE_DPAD_DOWN -> KeyboardCommand.DOWN
         KeyEvent.KEYCODE_DPAD_LEFT -> KeyboardCommand.LEFT
         KeyEvent.KEYCODE_DPAD_RIGHT -> KeyboardCommand.RIGHT
-        KeyEvent.KEYCODE_BUTTON_A -> KeyboardCommand.EXIT
-        KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_DPAD_CENTER -> KeyboardCommand.SELECT
+        KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> KeyboardCommand.SELECT
+        KeyEvent.KEYCODE_BUTTON_B -> KeyboardCommand.BACKSPACE
         KeyEvent.KEYCODE_BUTTON_X -> KeyboardCommand.SPACE
         KeyEvent.KEYCODE_BUTTON_Y -> KeyboardCommand.SHIFT
         KeyEvent.KEYCODE_BUTTON_L1 -> KeyboardCommand.PREVIOUS_LAYOUT
