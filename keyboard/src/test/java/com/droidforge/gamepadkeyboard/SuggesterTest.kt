@@ -1,5 +1,6 @@
 package com.droidforge.gamepadkeyboard
 
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,12 +18,26 @@ class SuggesterTest {
         java.io.File("src/main/assets/words_en.txt").readLines().map { it.trim().lowercase() }
     }
 
-    private fun suggester() = Suggester(RuntimeEnvironment.getApplication()) { realWords }
+    private fun suggester() = Suggester(RuntimeEnvironment.getApplication(), { realWords })
 
     @Test
     fun `production asset file is the real 10k list`() {
         assertTrue("expected 10k words in src/main/assets, got ${realWords.size}", realWords.size > 5000)
         assertEquals("the", realWords.first())
+    }
+
+    @Test
+    fun `learned words outrank static completions in the strip`() {
+        val learner = WordLearner(ApplicationProvider.getApplicationContext<android.content.Context>())
+        learner.record("zork", boost = 5)
+        val s = Suggester(ApplicationProvider.getApplicationContext(), { realWords }, learner)
+        val out = s.stripCandidates("zo")
+        // literal first, learned "zork" before any static completion (zone, zoo, …)
+        assertEquals("zo", out.first())
+        assertTrue("learned word missing from strip: $out", out.contains("zork"))
+        val firstStatic = out.indexOfFirst { it.startsWith("zo") && it != "zork" && it != "zo" }
+        assertTrue("expected static completions in strip: $out", firstStatic != -1)
+        assertTrue("learned should beat static: $out", out.indexOf("zork") < firstStatic)
     }
 
     @Test

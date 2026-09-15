@@ -4,10 +4,15 @@ import android.content.Context
 
 /**
  * Ranked-word autocomplete. Words come from a frequency-ranked list
- * (google-10000-english, public domain / MIT). Production loads from assets;
- * tests may inject lines directly. Candidates: frequency rank first, then order.
+ * (google-10000-english, public domain / MIT) MERGED with words learned from
+ * use (WordLearner — confirmed words outrank static completions).
+ * Production loads from assets; tests may inject lines directly.
  */
-class Suggester(context: Context, wordProvider: (() -> List<String>)? = null) {
+class Suggester(
+    context: Context,
+    wordProvider: (() -> List<String>)? = null,
+    private val learner: WordLearner? = null,
+) {
 
     private val words: List<String> = wordProvider?.invoke() ?: loadFromAssets(context)
 
@@ -32,15 +37,11 @@ class Suggester(context: Context, wordProvider: (() -> List<String>)? = null) {
             emptyList()
         }
 
-    /**
-     * Completions for [fragment] (the word being typed, letters only).
-     * Fragment itself comes first when it's a real word; up to [max] total.
-     */
+    /** Static-list completions (no learned words), frequency-ranked. */
     fun suggest(fragment: String, max: Int = 3): List<String> {
         if (fragment.length < 2 || words.isEmpty()) return emptyList()
         val f = fragment.lowercase()
         val out = ArrayList<String>(max)
-        // Exact word ranks first (typed so far is already a word)
         if (f in wordSet) out.add(f)
         for (w in words) {
             if (out.size >= max) break
@@ -50,15 +51,17 @@ class Suggester(context: Context, wordProvider: (() -> List<String>)? = null) {
     }
 
     /**
-     * Candidates for the strip: the literal fragment (typed text) plus the top
-     * completions, deduped, fragment-first. Empty fragment → last committed word.
+     * Candidates for the strip: the literal fragment (typed text) first, then
+     * LEARNED words with that prefix (use-frequency order), then static completions.
+     * Empty fragment → last committed word. Deduped, max 3.
      */
     fun stripCandidates(fragment: String): List<String> {
         if (fragment.isEmpty()) {
             return listOfNotNull(previousWord).take(3)
         }
         val literal = fragment.lowercase()
-        return (listOf(literal) + suggest(literal)).distinct().take(3)
+        val learned = learner?.withPrefix(literal, 3).orEmpty()
+        return (listOf(literal) + learned + suggest(literal)).distinct().take(3)
     }
 
     private companion object {

@@ -35,6 +35,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var keyboardView: KeyboardView? = null
     private lateinit var prefs: KeyboardPrefs
     private lateinit var suggester: Suggester
+    private lateinit var learner: WordLearner
     private lateinit var audio: KeyboardAudio
     private var lastAxisDump = ""
 
@@ -61,7 +62,8 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onCreate() {
         super.onCreate()
         prefs = KeyboardPrefs(this)
-        suggester = Suggester(this)
+        learner = WordLearner(this)
+        suggester = Suggester(this, learner = learner)
         audio = KeyboardAudio(this)
         audio.setPack(runCatching { SoundPack.valueOf(prefs.soundPackName) }.getOrDefault(SoundPack.CLASSIC))
     }
@@ -199,19 +201,25 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         kb.setSuggestions(suggester.stripCandidates(frag ?: ""))
     }
 
-    /** Replace the in-flight fragment with [word] + trailing space. */
+    /** Replace the in-flight fragment with [word] + trailing space; learn it. */
     private fun commitSuggestion(word: String) {
         val ic = currentInputConnection ?: return
         val frag = currentWord()
         if (frag != null) ic.deleteSurroundingText(frag.length, 0)
         ic.commitText("$word ", 1)
+        learner.record(word, boost = 2)  // explicit pick = stronger signal
         suggester.previousWord = word
         keyboardView?.setSuggestions(emptyList())
     }
 
+    /** Finish the current word with a space and learn it (space = confirmation). */
     private fun finishWordAndSpace() {
+        val word = currentWord()  // capture BEFORE the space lands
         currentInputConnection?.commitText(" ", 1)
-        currentWord()?.let { suggester.previousWord = it }
+        word?.let {
+            suggester.previousWord = it
+            learner.record(it)
+        }
         mainHandler.postDelayed(suggestionSync, 40)
     }
 
@@ -234,6 +242,11 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onEnter() {
+        // Enter confirms the current word too
+        currentWord()?.let {
+            suggester.previousWord = it
+            learner.record(it)
+        }
         val action = currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: 0
         val ic = currentInputConnection
         if (ic != null && action != EditorInfo.IME_ACTION_NONE) {

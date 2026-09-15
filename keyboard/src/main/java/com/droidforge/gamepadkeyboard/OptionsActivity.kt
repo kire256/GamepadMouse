@@ -84,6 +84,42 @@ class OptionsActivity : Activity() {
             root.findViewWithTag<TextView>("rate_label")?.text = "Hold-repeat rate — $v ms"
         }
 
+        // ---- Learned words ----
+        label("Learned words", root)
+        val learner = WordLearner.instance ?: WordLearner(this)
+        val listTag = "learned_list"
+        val addInput = android.widget.EditText(this).apply {
+            hint = "Add a word manually…"
+            setSingleLine(true)
+        }
+        root.addView(addInput)
+        root.addView(android.widget.Button(this).apply {
+            text = "Add word"
+            setOnClickListener {
+                val w = addInput.text.toString().trim()
+                if (w.length >= 2) {
+                    learner.record(w, boost = 5)  // manual add = strong
+                    addInput.setText("")
+                    rebuildLearnedList(listTag, learner)
+                    toast("Learned \"$w\"")
+                }
+            }
+        })
+        val listTag2 = listTag
+        root.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = listTag2
+        })
+        rebuildLearnedList(listTag2, learner)
+        root.addView(android.widget.Button(this).apply {
+            text = "Forget all learned words"
+            setOnClickListener {
+                learner.all().keys.forEach { learner.forget(it) }
+                rebuildLearnedList(listTag, learner)
+                toast("Dictionary reset")
+            }
+        })
+
         // ---- About ----
         label("Gamepad Keyboard ${KeyboardView.DISPLAY_VERSION}", root).apply {
             gravity = Gravity.CENTER
@@ -165,4 +201,37 @@ class OptionsActivity : Activity() {
 
     private fun toast(msg: String) =
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+
+    /** Refresh the learned-words list: "word ×count [Forget]" rows, top 100. */
+    private fun rebuildLearnedList(listTag: String, learner: WordLearner) {
+        val list = window.decorView.findViewWithTag<LinearLayout>(listTag) ?: return
+        list.removeAllViews()
+        val entries = learner.top(100)
+        if (entries.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = "(no learned words yet — type + space to teach me)"
+                textSize = 13f
+            })
+            return
+        }
+        for ((word, freq) in entries) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.addView(TextView(this).apply {
+                text = "$word  ×$freq"
+                textSize = 15f
+                setPadding(0, 0, (12 * density()).toInt(), 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f,
+                )
+            })
+            row.addView(android.widget.Button(this).apply {
+                text = "Forget"
+                setOnClickListener {
+                    learner.forget(word)
+                    rebuildLearnedList(listTag, learner)
+                }
+            })
+            list.addView(row)
+        }
+    }
 }
