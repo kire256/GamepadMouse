@@ -329,11 +329,11 @@ class GamepadMouseService : AccessibilityService() {
 
     // ---------------------------------------------------------------- mode
 
-    /** Chord cycles GAMEPAD → MOUSE → KEYBOARD → GAMEPAD. */
+    /** Chord toggles GAMEPAD ↔ MOUSE. (Legacy KEYBOARD mode is retired — text input
+     *  always goes through the standalone Gamepad Keyboard IME now.) */
     fun toggleMode() = when (_mode.value) {
         ServiceMode.GAMEPAD -> setMode(ServiceMode.MOUSE)
-        ServiceMode.MOUSE -> setMode(ServiceMode.KEYBOARD)
-        ServiceMode.KEYBOARD -> setMode(ServiceMode.GAMEPAD)
+        else -> setMode(ServiceMode.GAMEPAD)
     }
 
     fun setMode(newMode: ServiceMode) {

@@ -42,7 +42,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_DONE = "Done"
 
         /** Shown in the keyboard's bottom bar so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.1.9"
+        const val DISPLAY_VERSION = "v0.1.10"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L

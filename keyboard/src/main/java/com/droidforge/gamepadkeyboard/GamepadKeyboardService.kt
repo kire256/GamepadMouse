@@ -20,6 +20,12 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
          *  stands its cursor down — sticks belong to key navigation while we're up). */
         const val ACTION_IME_STATE = "com.droidforge.gamepadkeyboard.IME_STATE"
         const val EXTRA_SHOWN = "shown"
+
+        /** Receiver app's package. The broadcast must be EXPLICITLY targeted —
+         *  implicit custom broadcasts are dropped by Android 8+ and never reach
+         *  the app's manifest receiver. (Keep in sync with the app's applicationId;
+         *  release builds drop the .debug suffix — align when publishing.) */
+        const val MOUSE_APP_PACKAGE = "com.droidforge.gamepadmouse.debug"
     }
 
     private var keyboardView: KeyboardView? = null
@@ -164,7 +170,9 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     private fun broadcastImeState(shown: Boolean) {
-        val intent = android.content.Intent(ACTION_IME_STATE).putExtra(EXTRA_SHOWN, shown)
+        val intent = android.content.Intent(ACTION_IME_STATE)
+            .setPackage(MOUSE_APP_PACKAGE)  // explicit: implicit custom broadcasts die on API 26+
+            .putExtra(EXTRA_SHOWN, shown)
         runCatching { sendBroadcast(intent) }
         Log.d(TAG, "broadcast ime state shown=$shown")
     }
