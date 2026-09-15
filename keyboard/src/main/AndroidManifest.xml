@@ -29,5 +29,10 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
+
+        <activity
+            android:name=".OptionsActivity"
+            android:exported="true"
+            android:label="Gamepad Keyboard Options" />
     </application>
 </manifest>

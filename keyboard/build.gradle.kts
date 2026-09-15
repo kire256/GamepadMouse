@@ -11,8 +11,8 @@ android {
         applicationId = "com.droidforge.gamepadkeyboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.1.11-feel-polish"
+        versionCode = 13
+        versionName = "0.2.0-deck-edition"
     }
 
     buildTypes {

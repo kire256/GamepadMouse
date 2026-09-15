@@ -1,15 +1,19 @@
 package com.droidforge.gamepadkeyboard
 
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
 
 /**
- * A full keyboard IME driven entirely by a game controller.
- * Text goes to the focused field via InputConnection — the platform's real typing path.
+ * A full keyboard IME driven entirely by a game controller, styled after the
+ * Steam Deck keyboard. Text goes to the focused field via InputConnection —
+ * the platform's real typing path.
  */
 class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
@@ -29,7 +33,19 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     private var keyboardView: KeyboardView? = null
+    private lateinit var prefs: KeyboardPrefs
+    private lateinit var suggester: Suggester
+    private lateinit var audio: KeyboardAudio
     private var lastAxisDump = ""
+
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+
+    // Suggestion refresh after each key: let the InputConnection settle first.
+    private val suggestionSync = object : Runnable {
+        override fun run() {
+            syncSuggestions()
+        }
+    }
 
     // True while we deliberately hid the IME — isInputViewShown() lags/reads true
     // on some Samsung builds after requestHideSelf(), letting keys "ghost type".
@@ -42,14 +58,33 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var lastStickX = 0f
     private var lastStickY = 0f
 
+    override fun onCreate() {
+        super.onCreate()
+        prefs = KeyboardPrefs(this)
+        suggester = Suggester(this)
+        audio = KeyboardAudio(this)
+        audio.setPack(runCatching { SoundPack.valueOf(prefs.soundPackName) }.getOrDefault(SoundPack.CLASSIC))
+    }
+
+    override fun onDestroy() {
+        broadcastImeState(false)
+        audio.release()
+        super.onDestroy()
+    }
+
     override fun onCreateInputView(): View {
         val view = KeyboardView(this)
         view.listener = this
+        view.skin = runCatching { Skin.valueOf(prefs.skinName) }.getOrDefault(Skin.STEAM_DECK)
+        view.hapticsEnabled = prefs.hapticsEnabled
         // Fixed height, bottom-docked — like a stock keyboard. Both the layout params
         // AND the view's own onMeasure assert the height; some devices stretch the
         // IME view to fill the screen otherwise.
         val dm = resources.displayMetrics
-        val heightPx = minOf((260 * dm.density).toInt(), (dm.heightPixels * 0.5f).toInt())
+        val heightPx = minOf(
+            (prefs.heightDp * dm.density).toInt(),
+            (dm.heightPixels * 0.5f).toInt(),
+        )
         view.setDesiredHeightPx(heightPx)
         view.layoutParams = android.view.ViewGroup.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
@@ -65,7 +100,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     /**
      * Controllers report the d-pad as hat-axis MOTION (not key events) on many
      * devices — route those into selection movement with edge detection.
-     * Left stick also navigates.
+     * Left stick also navigates. Hold = repeat; center = stop.
      */
     override fun onGenericMotionEvent(event: MotionEvent?): Boolean {
         event ?: return super.onGenericMotionEvent(event)
@@ -74,35 +109,25 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (dismissed || !isInputViewShown) return super.onGenericMotionEvent(event)
         val kb = keyboardView ?: return super.onGenericMotionEvent(event)
 
-        // Raw axis dump (deduped) — diagnoses which axes the controller actually
-        // drives. Some DS4 builds deliver d-pad LEFT/RIGHT on an unexpected axis.
         val hx = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
         val sx = event.getAxisValue(MotionEvent.AXIS_X)
         val sy = event.getAxisValue(MotionEvent.AXIS_Y)
-        val dump = "hatX=$hx hatY=$hy stickX=$sx stickY=$sy"
-        if ((kotlin.math.abs(hx) > 0.3f || kotlin.math.abs(hy) > 0.3f ||
-            kotlin.math.abs(sx) > 0.5f || kotlin.math.abs(sy) > 0.5f) && dump != lastAxisDump
-        ) {
-            Log.d(TAG, dump)
-            lastAxisDump = dump
-        }
-        if (hx == 0f && hy == 0f) lastAxisDump = ""
 
         var handled = false
-        if (hx <= -0.5f && lastHatX > -0.5f) { Log.d(TAG, "hat LEFT"); kb.startDirectionalRepeat(0, -1); handled = true }
-        if (hx >= 0.5f && lastHatX < 0.5f) { Log.d(TAG, "hat RIGHT"); kb.startDirectionalRepeat(0, 1); handled = true }
-        if (hy <= -0.5f && lastHatY > -0.5f) { Log.d(TAG, "hat UP"); kb.startDirectionalRepeat(-1, 0); handled = true }
-        if (hy >= 0.5f && lastHatY < 0.5f) { Log.d(TAG, "hat DOWN"); kb.startDirectionalRepeat(1, 0); handled = true }
+        if (hx <= -0.5f && lastHatX > -0.5f) { kb.startDirectionalRepeat(0, -1); handled = true }
+        if (hx >= 0.5f && lastHatX < 0.5f) { kb.startDirectionalRepeat(0, 1); handled = true }
+        if (hy <= -0.5f && lastHatY > -0.5f) { kb.startDirectionalRepeat(-1, 0); handled = true }
+        if (hy >= 0.5f && lastHatY < 0.5f) { kb.startDirectionalRepeat(1, 0); handled = true }
         // Back to center → stop the held-direction repeat
         if (hx > -0.5f && hx < 0.5f && (lastHatX <= -0.5f || lastHatX >= 0.5f)) kb.stopDirectionalRepeat()
         if (hy > -0.5f && hy < 0.5f && (lastHatY <= -0.5f || lastHatY >= 0.5f)) kb.stopDirectionalRepeat()
         lastHatX = hx; lastHatY = hy
 
-        if (sx <= -0.5f && lastStickX > -0.5f) { Log.d(TAG, "stick LEFT"); kb.startDirectionalRepeat(0, -1); handled = true }
-        if (sx >= 0.5f && lastStickX < 0.5f) { Log.d(TAG, "stick RIGHT"); kb.startDirectionalRepeat(0, 1); handled = true }
-        if (sy <= -0.5f && lastStickY > -0.5f) { Log.d(TAG, "stick UP"); kb.startDirectionalRepeat(-1, 0); handled = true }
-        if (sy >= 0.5f && lastStickY < 0.5f) { Log.d(TAG, "stick DOWN"); kb.startDirectionalRepeat(1, 0); handled = true }
+        if (sx <= -0.5f && lastStickX > -0.5f) { kb.startDirectionalRepeat(0, -1); handled = true }
+        if (sx >= 0.5f && lastStickX < 0.5f) { kb.startDirectionalRepeat(0, 1); handled = true }
+        if (sy <= -0.5f && lastStickY > -0.5f) { kb.startDirectionalRepeat(-1, 0); handled = true }
+        if (sy >= 0.5f && lastStickY < 0.5f) { kb.startDirectionalRepeat(1, 0); handled = true }
         if (sx > -0.5f && sx < 0.5f && (lastStickX <= -0.5f || lastStickX >= 0.5f)) kb.stopDirectionalRepeat()
         if (sy > -0.5f && sy < 0.5f && (lastStickY <= -0.5f || lastStickY >= 0.5f)) kb.stopDirectionalRepeat()
         lastStickX = sx; lastStickY = sy
@@ -114,21 +139,28 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         super.onStartInputView(info, restarting)
         dismissed = false
         broadcastImeState(true)
-        keyboardView?.layout = KeyboardView.Layout.LETTERS
+        keyboardView?.page = KeyboardView.Page.LETTERS
         keyboardView?.shiftEnabled = false
         keyboardView?.capsLockEnabled = false
         keyboardView?.autoCap =
             (info?.inputType ?: 0) and EditorInfo.TYPE_TEXT_FLAG_CAP_SENTENCES != 0
+        suggester.previousWord = null
+        mainHandler.post(suggestionSync)
     }
 
-    /** Gamepad keys arrive here whenever the IME has focus — no focus battles. */
+    override fun onFinishInputView(finishingInput: Boolean) {
+        mainHandler.removeCallbacks(suggestionSync)
+        super.onFinishInputView(finishingInput)
+    }
+
+    /** Gamepad buttons arrive here whenever the IME has focus — no focus battles. */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // Hidden → let the system have everything (prevents ghost typing after B-hide).
         if (dismissed || !isInputViewShown) {
             Log.d(TAG, "key while hidden: ${KeyEvent.keyCodeToString(keyCode)}")
             return super.onKeyDown(keyCode, event)
         }
-        Log.d(TAG, "key: ${KeyEvent.keyCodeToString(keyCode)}")
+        // S = commit top suggestion (keyboard-page S key; only when not typing it)
         keyboardView?.let { kb ->
             if (kb.onGamepadKeyDown(keyCode)) return true
         }
@@ -143,14 +175,62 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         return super.onKeyUp(keyCode, event)
     }
 
-    // ---- KeyboardView.Listener ----
+    // ---- suggestions ----------------------------------------------------------
+
+    private fun currentWord(): String? {
+        val ic = currentInputConnection ?: return null
+        val before = ic.getTextBeforeCursor(48, 0) ?: return null
+        if (before.isEmpty()) return null
+        // Word = trailing run of letters (stop at space/punct — no composition state)
+        val sb = StringBuilder()
+        for (ch in before.reversed()) {
+            if (ch.isLetter()) sb.append(ch) else break
+        }
+        return if (sb.isEmpty()) null else sb.reversed().toString()
+    }
+
+    private fun syncSuggestions() {
+        val kb = keyboardView ?: return
+        if (!prefs.suggestionsEnabled || currentWord() == null && suggester.previousWord == null) {
+            kb.setSuggestions(emptyList())
+            return
+        }
+        val frag = currentWord()
+        kb.setSuggestions(suggester.stripCandidates(frag ?: ""))
+    }
+
+    /** Replace the in-flight fragment with [word] + trailing space. */
+    private fun commitSuggestion(word: String) {
+        val ic = currentInputConnection ?: return
+        val frag = currentWord()
+        if (frag != null) ic.deleteSurroundingText(frag.length, 0)
+        ic.commitText("$word ", 1)
+        suggester.previousWord = word
+        keyboardView?.setSuggestions(emptyList())
+    }
+
+    private fun finishWordAndSpace() {
+        currentInputConnection?.commitText(" ", 1)
+        currentWord()?.let { suggester.previousWord = it }
+        mainHandler.postDelayed(suggestionSync, 40)
+    }
+
+    // ---- KeyboardView.Listener ------------------------------------------------
 
     override fun onKey(text: String) {
         currentInputConnection?.commitText(text, 1)
+        audio.tap()
+        mainHandler.removeCallbacks(suggestionSync)
+        mainHandler.postDelayed(suggestionSync, 40)
     }
+
+    override fun onSpace() = finishWordAndSpace()
 
     override fun onBackspace() {
         currentInputConnection?.deleteSurroundingText(1, 0)
+        audio.tap()
+        mainHandler.removeCallbacks(suggestionSync)
+        mainHandler.postDelayed(suggestionSync, 40)
     }
 
     override fun onEnter() {
@@ -161,6 +241,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         } else {
             ic?.commitText("\n", 1)
         }
+        audio.enter()
     }
 
     override fun onHide() {
@@ -170,10 +251,86 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         requestHideSelf(0)
     }
 
-    override fun onDestroy() {
-        broadcastImeState(false)
-        super.onDestroy()
+    override fun onSuggestionPick(word: String) = commitSuggestion(word)
+
+    override fun onEditorKey(keyCode: Int) {
+        val ic = currentInputConnection ?: return
+        when (keyCode) {
+            KeyEvent.KEYCODE_FORWARD_DEL -> ic.deleteSurroundingText(0, 1)
+            KeyEvent.KEYCODE_MOVE_HOME -> ic.sendKeyEvent(
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MOVE_HOME))
+            KeyEvent.KEYCODE_MOVE_END -> ic.sendKeyEvent(
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MOVE_END))
+            KeyEvent.KEYCODE_PAGE_UP -> ic.sendKeyEvent(
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAGE_UP))
+            KeyEvent.KEYCODE_PAGE_DOWN -> ic.sendKeyEvent(
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAGE_DOWN))
+            KeyEvent.KEYCODE_DPAD_LEFT -> ic.sendKeyEvent(
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT))
+            KeyEvent.KEYCODE_DPAD_RIGHT -> ic.sendKeyEvent(
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
+            KeyEvent.KEYCODE_DPAD_UP -> ic.sendKeyEvent(
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP))
+            KeyEvent.KEYCODE_DPAD_DOWN -> ic.sendKeyEvent(
+                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN))
+            in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 ->
+                ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        }
+        audio.tap()
     }
+
+    override fun onSelectAll() {
+        val ic = currentInputConnection ?: return
+        val et = ic.getExtractedText(ExtractedTextRequest(), 0) ?: return
+        ic.setSelection(0, et.text?.length ?: 0)
+        audio.tap()
+    }
+
+    override fun onCopy() {
+        val ic = currentInputConnection ?: return
+        val selected = ic.getSelectedText(0)
+        if (selected != null) {
+            val cm = getSystemService(android.content.ClipboardManager::class.java)
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("text", selected))
+        }
+        audio.tap()
+    }
+
+    override fun onCut() {
+        onCopy()
+        currentInputConnection?.deleteSurroundingText(0, 0)  // no-op guard
+        val ic = currentInputConnection ?: return
+        val sel = ic.getSelectedText(0)
+        if (!sel.isNullOrEmpty()) ic.commitText("", 1)
+        audio.tap()
+    }
+
+    override fun onPaste() {
+        val cm = getSystemService(android.content.ClipboardManager::class.java)
+        val clip = cm.primaryClip?.getItemAt(0)?.coerceToText(this)
+        if (!clip.isNullOrEmpty()) {
+            currentInputConnection?.commitText(clip, 1)
+            audio.enter()
+        }
+    }
+
+    override fun onOpenOptions() {
+        val intent = android.content.Intent(this, OptionsActivity::class.java)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+        // Keep the IME open underneath; the options screen floats above it.
+    }
+
+    // ---- prefs refresh (options screen may have changed things) ---------------
+
+    override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(info, restarting)
+        keyboardView?.skin = runCatching { Skin.valueOf(prefs.skinName) }.getOrDefault(Skin.STEAM_DECK)
+        keyboardView?.hapticsEnabled = prefs.hapticsEnabled
+        audio.setPack(runCatching { SoundPack.valueOf(prefs.soundPackName) }.getOrDefault(SoundPack.CLASSIC))
+    }
+
+    // ---- broadcast ------------------------------------------------------------
 
     private fun broadcastImeState(shown: Boolean) {
         val intent = android.content.Intent(ACTION_IME_STATE)
