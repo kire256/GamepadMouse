@@ -90,16 +90,21 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (hx == 0f && hy == 0f) lastAxisDump = ""
 
         var handled = false
-        if (hx <= -0.5f && lastHatX > -0.5f) { Log.d(TAG, "hat LEFT"); kb.moveSelection(0, -1); handled = true }
-        if (hx >= 0.5f && lastHatX < 0.5f) { Log.d(TAG, "hat RIGHT"); kb.moveSelection(0, 1); handled = true }
-        if (hy <= -0.5f && lastHatY > -0.5f) { Log.d(TAG, "hat UP"); kb.moveSelection(-1, 0); handled = true }
-        if (hy >= 0.5f && lastHatY < 0.5f) { Log.d(TAG, "hat DOWN"); kb.moveSelection(1, 0); handled = true }
+        if (hx <= -0.5f && lastHatX > -0.5f) { Log.d(TAG, "hat LEFT"); kb.startDirectionalRepeat(0, -1); handled = true }
+        if (hx >= 0.5f && lastHatX < 0.5f) { Log.d(TAG, "hat RIGHT"); kb.startDirectionalRepeat(0, 1); handled = true }
+        if (hy <= -0.5f && lastHatY > -0.5f) { Log.d(TAG, "hat UP"); kb.startDirectionalRepeat(-1, 0); handled = true }
+        if (hy >= 0.5f && lastHatY < 0.5f) { Log.d(TAG, "hat DOWN"); kb.startDirectionalRepeat(1, 0); handled = true }
+        // Back to center → stop the held-direction repeat
+        if (hx > -0.5f && hx < 0.5f && (lastHatX <= -0.5f || lastHatX >= 0.5f)) kb.stopDirectionalRepeat()
+        if (hy > -0.5f && hy < 0.5f && (lastHatY <= -0.5f || lastHatY >= 0.5f)) kb.stopDirectionalRepeat()
         lastHatX = hx; lastHatY = hy
 
-        if (sx <= -0.5f && lastStickX > -0.5f) { Log.d(TAG, "stick LEFT"); kb.moveSelection(0, -1); handled = true }
-        if (sx >= 0.5f && lastStickX < 0.5f) { Log.d(TAG, "stick RIGHT"); kb.moveSelection(0, 1); handled = true }
-        if (sy <= -0.5f && lastStickY > -0.5f) { Log.d(TAG, "stick UP"); kb.moveSelection(-1, 0); handled = true }
-        if (sy >= 0.5f && lastStickY < 0.5f) { Log.d(TAG, "stick DOWN"); kb.moveSelection(1, 0); handled = true }
+        if (sx <= -0.5f && lastStickX > -0.5f) { Log.d(TAG, "stick LEFT"); kb.startDirectionalRepeat(0, -1); handled = true }
+        if (sx >= 0.5f && lastStickX < 0.5f) { Log.d(TAG, "stick RIGHT"); kb.startDirectionalRepeat(0, 1); handled = true }
+        if (sy <= -0.5f && lastStickY > -0.5f) { Log.d(TAG, "stick UP"); kb.startDirectionalRepeat(-1, 0); handled = true }
+        if (sy >= 0.5f && lastStickY < 0.5f) { Log.d(TAG, "stick DOWN"); kb.startDirectionalRepeat(1, 0); handled = true }
+        if (sx > -0.5f && sx < 0.5f && (lastStickX <= -0.5f || lastStickX >= 0.5f)) kb.stopDirectionalRepeat()
+        if (sy > -0.5f && sy < 0.5f && (lastStickY <= -0.5f || lastStickY >= 0.5f)) kb.stopDirectionalRepeat()
         lastStickX = sx; lastStickY = sy
 
         return handled || super.onGenericMotionEvent(event)
@@ -161,6 +166,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onHide() {
         dismissed = true
         broadcastImeState(false)
+        keyboardView?.stopDirectionalRepeat()
         requestHideSelf(0)
     }
 

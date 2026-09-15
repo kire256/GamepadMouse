@@ -42,10 +42,11 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_DONE = "Done"
 
         /** Shown in the keyboard's bottom bar so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.1.10"
+        const val DISPLAY_VERSION = "v0.1.11"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
+        private const val FLASH_MS = 160L
     }
 
     // PlayStation-style letter grid: numbers+@ / QWERTY+# / home row+"/" / ZXCV with -_?!
@@ -92,6 +93,13 @@ class KeyboardView(context: Context) : View(context) {
     // Key-repeat while a d-pad direction is held
     private var repeatRunnable: Runnable? = null
     private var repeatDirection: Pair<Int, Int>? = null
+
+    // Press feedback: briefly highlights the key that was just pressed (both input paths)
+    private var flashRow = -1
+    private var flashCol = -1
+    private var flashRunnable: Runnable? = null
+
+    private val flashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF6EA8FE.toInt() }
 
     private val bgPaint = Paint().apply { color = keyboardColor }
     private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF23262E.toInt() }
@@ -181,7 +189,40 @@ class KeyboardView(context: Context) : View(context) {
 
     fun selectedKey(): String = grid()[selectedRow][selectedCol].label
 
-    fun pressSelectedKey() = pressKey(selectedKey())
+    fun pressSelectedKey() {
+        flashSelectedKey()
+        pressKey(selectedKey())
+    }
+
+    /** Brief visual pulse + haptic tick on the cell that was just activated. */
+    private fun flashCell(r: Int, c: Int) {
+        flashRunnable?.let { removeCallbacks(it) }
+        flashRow = r; flashCol = c
+        hapticTick()
+        invalidate()
+        val clear = Runnable { flashRow = -1; flashCol = -1; invalidate() }
+        flashRunnable = clear
+        postDelayed(clear, FLASH_MS)
+    }
+
+    private fun flashSelectedKey() = flashCell(selectedRow, selectedCol)
+
+    private fun flashKeyByLabel(label: String) {
+        val g = grid()
+        for ((r, row) in g.withIndex()) {
+            val c = row.indexOfFirst { it.label == label }
+            if (c >= 0) { flashCell(r, c); return }
+        }
+    }
+
+    private fun hapticTick() {
+        runCatching {
+            performHapticFeedback(
+                android.view.HapticFeedbackConstants.KEYBOARD_TAP,
+                android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+            )
+        }
+    }
 
     fun pressKey(label: String) {
         when (label) {
@@ -222,11 +263,11 @@ class KeyboardView(context: Context) : View(context) {
             // Erik's spec (v3): A = type, B = close (matches Android convention)
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> { pressSelectedKey(); true }
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { listener?.onHide(); true }
-            KeyEvent.KEYCODE_BUTTON_X -> { listener?.onBackspace(); true }
-            KeyEvent.KEYCODE_BUTTON_Y -> { shiftEnabled = !shiftEnabled; true }
+            KeyEvent.KEYCODE_BUTTON_X -> { flashKeyByLabel(KEY_BACKSPACE); listener?.onBackspace(); true }
+            KeyEvent.KEYCODE_BUTTON_Y -> { flashKeyByLabel(KEY_SHIFT); shiftEnabled = !shiftEnabled; true }
             KeyEvent.KEYCODE_BUTTON_L1 -> { cycleLayout(-1); true }
             KeyEvent.KEYCODE_BUTTON_R1 -> { cycleLayout(1); true }
-            KeyEvent.KEYCODE_BUTTON_START -> { listener?.onEnter(); true }
+            KeyEvent.KEYCODE_BUTTON_START -> { flashKeyByLabel(KEY_ENTER); listener?.onEnter(); true }
             KeyEvent.KEYCODE_BUTTON_SELECT -> { listener?.onHide(); true }
             else -> false
         }
@@ -249,9 +290,9 @@ class KeyboardView(context: Context) : View(context) {
     }
 
     private fun startRepeat(dRow: Int, dCol: Int) {
+        stopRepeat()  // first — it clears repeatDirection
         moveSelection(dRow, dCol)
         repeatDirection = dRow to dCol
-        stopRepeat()
         val r = object : Runnable {
             override fun run() {
                 val dir = repeatDirection ?: return
@@ -269,8 +310,16 @@ class KeyboardView(context: Context) : View(context) {
         repeatDirection = null
     }
 
+    /** Service-facing: hat/stick edge → start stepping (and keep stepping while held). */
+    fun startDirectionalRepeat(dRow: Int, dCol: Int) = startRepeat(dRow, dCol)
+
+    /** Service-facing: hat/stick returned to center → stop stepping. */
+    fun stopDirectionalRepeat() = stopRepeat()
+
     override fun onDetachedFromWindow() {
         stopRepeat()
+        flashRunnable?.let { removeCallbacks(it) }
+        flashRunnable = null
         super.onDetachedFromWindow()
     }
 
@@ -285,6 +334,7 @@ class KeyboardView(context: Context) : View(context) {
                 if (rect.contains(event.x, event.y)) {
                     // Tap = direct press. Selection/highlight stays a gamepad-only cursor.
                     highlightVisible = false
+                    flashCell(r, c)
                     pressKey(grid()[r][c].label)
                     performClick()
                     return true
@@ -323,6 +373,7 @@ class KeyboardView(context: Context) : View(context) {
                 rowRects += rect
                 val selected = highlightVisible && r == selectedRow && c == selectedCol
                 val paint = when {
+                    r == flashRow && c == flashCol -> flashPaint
                     selected -> selectedPaint
                     key.isAction -> actionPaint
                     else -> keyPaint
