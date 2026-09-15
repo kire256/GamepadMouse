@@ -107,13 +107,16 @@ class GamepadMouseService : AccessibilityService() {
     private var overlay: CursorOverlayView? = null
     private var keyboardOverlay: KeyboardOverlayView? = null
     private var keyboardTargetNode: android.view.accessibility.AccessibilityNodeInfo? = null
-    private var suppressAutoKeyboardUntil = 0L
     /** True while an editable field holds input focus (tracked from a11y focus events). */
     private var editableFieldFocused = false
     /** True while the capture window is demoted to NOT_FOCUSABLE so the system IME can open. */
     private var imeShield = false
     private var captureParams: WindowManager.LayoutParams? = null
     private var savedImeShowMode = -1
+    // Last gamepad click location (for keyboard-on-click detection)
+    private var lastTapX = 0f
+    private var lastTapY = 0f
+    private var lastTapAt = 0L
     
     // Cursor auto-hide timer
     private var hideJob: kotlinx.coroutines.Job? = null
@@ -224,30 +227,17 @@ class GamepadMouseService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event?.source?.let { source ->
+            // Track editable focus ONLY (for the legacy reclaim gate + text target).
+            // We never auto-open our keyboard from field focus: mouse mode must not
+            // override the system IME. Our keyboard appears on explicit intent —
+            // gamepad click on a field, the chord cycle, or the Keyboard Mode binding.
             // Samsung often delivers the focused editable as the source of
-            // WINDOW_CONTENT_CHANGED events, so accept ANY event type here (like the
-            // original auto-show path) — not just TYPE_VIEW_FOCUSED.
+            // WINDOW_CONTENT_CHANGED events, so accept ANY event type here.
             if (source.isEditable && source.isFocused) {
                 if (!editableFieldFocused) {
                     editableFieldFocused = true
                     keyboardTargetNode = source
                     Log.d(TAG, "editable focus detected (eventType=${event.eventType})")
-                }
-                if (_mode.value == ServiceMode.MOUSE) {
-                    if (settings.autoShowKeyboardOnTextField &&
-                        android.os.SystemClock.uptimeMillis() >= suppressAutoKeyboardUntil
-                    ) {
-                        setMode(ServiceMode.KEYBOARD)
-                    } else if (!imeShield) {
-                        // Text box tapped by hand in mouse mode: demote the capture window
-                        // to NOT_FOCUSABLE so window focus returns to the app, then send a
-                        // synthetic tap on the field to trigger the native
-                        // showSoftInputOnFocus path (opens the SYSTEM keyboard).
-                        imeShield = true
-                        setCaptureWindowFocusable(false)
-                        source.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
-                        scheduleImeTap(source)
-                    }
                 }
             } else if (event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
                 editableFieldFocused = false
@@ -299,15 +289,11 @@ class GamepadMouseService : AccessibilityService() {
 
     // ---------------------------------------------------------------- mode
 
-    fun toggleMode() = setMode(if (_mode.value == ServiceMode.MOUSE) ServiceMode.GAMEPAD else ServiceMode.MOUSE)
-
-    fun showKeyboardForFocusedField() {
-        if (settings.autoShowKeyboardOnTextField && _mode.value == ServiceMode.MOUSE) {
-            scope.launch {
-                kotlinx.coroutines.delay(120)
-                setMode(ServiceMode.KEYBOARD)
-            }
-        }
+    /** Chord cycles GAMEPAD → MOUSE → KEYBOARD → GAMEPAD. */
+    fun toggleMode() = when (_mode.value) {
+        ServiceMode.GAMEPAD -> setMode(ServiceMode.MOUSE)
+        ServiceMode.MOUSE -> setMode(ServiceMode.KEYBOARD)
+        ServiceMode.KEYBOARD -> setMode(ServiceMode.GAMEPAD)
     }
 
     fun setMode(newMode: ServiceMode) {
@@ -440,8 +426,7 @@ class GamepadMouseService : AccessibilityService() {
             repo.setKeyboardShowNumberRow(newSettings.keyboardShowNumberRow)
             repo.setKeyboardShowSystemKeys(newSettings.keyboardShowSystemKeys)
             repo.setKeyboardColor(newSettings.keyboardColor)
-            repo.setAutoShowKeyboardOnTextField(newSettings.autoShowKeyboardOnTextField)
-            
+
             Log.i(TAG, "Switched to profile: $deviceName ($deviceId)")
         }
     }
@@ -572,24 +557,27 @@ class GamepadMouseService : AccessibilityService() {
     }
 
     /**
-     * After demoting the capture window, tap the field's center through the gesture
-     * pipeline. The touch lands on the app's EditText as a real user tap, so the
-     * system IME opens via the normal showSoftInputOnFocus flow.
+     * After a gamepad click lands at the cursor, if the tapped point focused an
+     * editable field, bring up OUR keyboard. Finger taps never trigger this —
+     * only gamepad-initiated clicks, so the system IME stays untouched otherwise.
+     * Requires the tap point to sit inside the focused field's bounds, so a stale
+     * previously-focused field elsewhere can't pop the keyboard.
      */
-    private fun scheduleImeTap(node: android.view.accessibility.AccessibilityNodeInfo) {
-        val rect = android.graphics.Rect()
-        node.getBoundsInScreen(rect)
-        if (rect.isEmpty) return
-        val cx = rect.exactCenterX().coerceIn(0f, displayW)
-        val cy = rect.exactCenterY().coerceIn(0f, displayH)
+    private fun maybeOpenKeyboardForTap() {
         scope.launch {
-            kotlinx.coroutines.delay(150)  // let window focus settle after the flag flip
-            val path = Path().apply { moveTo(cx, cy) }
-            val gesture = GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
-                .build()
-            val ok = dispatchGesture(gesture, null, null)
-            Log.d(TAG, "ime tap at ($cx,$cy) dispatched=$ok")
+            kotlinx.coroutines.delay(350)  // let the tap land and field focus settle
+            if (_mode.value != ServiceMode.MOUSE) return@launch
+            val node = findEditableInputNode() ?: return@launch
+            if (android.os.SystemClock.uptimeMillis() - lastTapAt > 1500L) return@launch
+            val rect = android.graphics.Rect()
+            node.getBoundsInScreen(rect)
+            if (!rect.isEmpty &&
+                lastTapX >= rect.left - 10 && lastTapX <= rect.right + 10 &&
+                lastTapY >= rect.top - 10 && lastTapY <= rect.bottom + 10
+            ) {
+                Log.d(TAG, "gamepad click focused editable -> keyboard mode")
+                setMode(ServiceMode.KEYBOARD)
+            }
         }
     }
     
@@ -672,6 +660,11 @@ class GamepadMouseService : AccessibilityService() {
         if (!fromGamepad && !KeyEvent.isGamepadButton(event.keyCode)) return false
 
         val code = event.keyCode
+        // When the Gamepad Keyboard IME is the active input method, gamepad keys belong
+        // to it (A types, X deletes, d-pad navigates) — stand down so the IME receives
+        // them. The toggle chord stays reserved for mode cycling.
+        if (code !in settings.toggleChord && isGamepadKeyboardImeActive()) return false
+
         if (_mode.value == ServiceMode.MOUSE && imeShield && event.action == KeyEvent.ACTION_DOWN) {
             // User grabbed the gamepad again: restore joystick capture focus.
             imeShield = false
@@ -813,8 +806,14 @@ class GamepadMouseService : AccessibilityService() {
 
     private fun executeAction(action: MouseAction) {
         when (action) {
-            MouseAction.TAP -> tapAtCursor(TAP_MS)
-            MouseAction.LONG_PRESS -> tapAtCursor(LONG_PRESS_MS)
+            MouseAction.TAP -> {
+                tapAtCursor(TAP_MS, true)
+                maybeOpenKeyboardForTap()
+            }
+            MouseAction.LONG_PRESS -> {
+                tapAtCursor(LONG_PRESS_MS, true)
+                maybeOpenKeyboardForTap()
+            }
             MouseAction.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
             MouseAction.HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
             MouseAction.RECENTS -> performGlobalAction(GLOBAL_ACTION_RECENTS)
@@ -832,9 +831,6 @@ class GamepadMouseService : AccessibilityService() {
             MouseAction.VOLUME_DOWN -> adjustVolume(AudioManager.ADJUST_LOWER)
             MouseAction.VOLUME_MUTE -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE)
             MouseAction.KEYBOARD_MODE -> {
-                if (_mode.value == ServiceMode.KEYBOARD) {
-                    suppressAutoKeyboardUntil = android.os.SystemClock.uptimeMillis() + 1500L
-                }
                 setMode(ModeTransitions.keyboardActionTarget(_mode.value))
             }
             MouseAction.KEYBOARD_PRESS -> if (_mode.value == ServiceMode.KEYBOARD) {
@@ -992,6 +988,15 @@ class GamepadMouseService : AccessibilityService() {
         return null
     }
 
+    /** True when the Gamepad Keyboard IME is the user's active input method. */
+    private fun isGamepadKeyboardImeActive(): Boolean {
+        val active = android.provider.Settings.Secure.getString(
+            contentResolver,
+            android.provider.Settings.Secure.DEFAULT_INPUT_METHOD,
+        ) ?: return false
+        return active.startsWith("com.droidforge.gamepadkeyboard")
+    }
+
     /** D-pad nudges the cursor a fixed step when no analog stick is present (e.g. INMO ring). */
     private fun dpadFallback(code: Int): MouseAction? {
         val step = 40f
@@ -1130,10 +1135,15 @@ class GamepadMouseService : AccessibilityService() {
 
     // ---------------------------------------------------------------- gestures
 
-    private fun tapAtCursor(durationMs: Long) {
+    private fun tapAtCursor(durationMs: Long, trackTapPoint: Boolean = false) {
         val ov = overlay ?: return
         val path = Path().apply { moveTo(ov.cursorX, ov.cursorY) }
         dispatchTap(GestureDescription.StrokeDescription(path, 0, durationMs))
+        if (trackTapPoint) {
+            lastTapX = ov.cursorX
+            lastTapY = ov.cursorY
+            lastTapAt = android.os.SystemClock.uptimeMillis()
+        }
         // Don't call showCursor() here - let dispatchTap handle hiding if needed
         if (durationMs <= TAP_MS) {
             audioManager.play(AudioCue.TAP)

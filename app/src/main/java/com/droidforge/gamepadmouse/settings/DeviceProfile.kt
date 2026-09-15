@@ -40,6 +40,8 @@ data class ProfileSettings(
     val keyboardShowNumberRow: Boolean = true,
     val keyboardShowSystemKeys: Boolean = true,
     val keyboardColor: Int = 0xFF202124.toInt(),
+    // Unused since v17 — auto-show removed (system IME is never overridden now).
+    // Field kept so existing persisted profile JSON still deserializes.
     val autoShowKeyboardOnTextField: Boolean = true,
 )
 
@@ -69,7 +71,6 @@ fun Settings.toProfileSettings(): ProfileSettings = ProfileSettings(
     keyboardShowNumberRow = keyboardShowNumberRow,
     keyboardShowSystemKeys = keyboardShowSystemKeys,
     keyboardColor = keyboardColor,
-    autoShowKeyboardOnTextField = autoShowKeyboardOnTextField,
 )
 
 fun ProfileSettings.toSettings(): Settings {
@@ -106,6 +107,5 @@ fun ProfileSettings.toSettings(): Settings {
         keyboardShowNumberRow = keyboardShowNumberRow,
         keyboardShowSystemKeys = keyboardShowSystemKeys,
         keyboardColor = keyboardColor,
-        autoShowKeyboardOnTextField = autoShowKeyboardOnTextField,
     )
 }

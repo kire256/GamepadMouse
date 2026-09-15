@@ -13,9 +13,9 @@ import android.view.View
 /**
  * Gamepad-navigable on-screen keyboard, styled after the PlayStation console keyboard.
  *
- * Gamepad mapping:
+ * Gamepad mapping (Erik's spec, v3):
  *  - D-pad / left stick: move key selection
- *  - A: close keyboard (back)      B: press selected key (type)
+ *  - A: press selected key (type)   B: close keyboard
  *  - X: backspace                  Y: shift
  *  - LB/RB: switch layout          Start: Enter      Select: close
  *
@@ -42,7 +42,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_DONE = "Done"
 
         /** Shown in the keyboard's bottom bar so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.1.4"
+        const val DISPLAY_VERSION = "v0.1.7"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -82,6 +82,8 @@ class KeyboardView(context: Context) : View(context) {
 
     private var selectedRow = 1
     private var selectedCol = 0
+    /** Highlight marks the GAMEPAD cursor; touch taps press keys but leave no highlight. */
+    private var highlightVisible = true
 
     // Fixed height the view asserts regardless of the IME window's measuring spec —
     // without this some devices stretch the keyboard to fill the whole screen.
@@ -171,7 +173,9 @@ class KeyboardView(context: Context) : View(context) {
     fun moveSelection(dRow: Int, dCol: Int) {
         val g = grid()
         selectedRow = (selectedRow + dRow).coerceIn(0, g.lastIndex)
-        selectedCol = selectedCol.coerceIn(0, g[selectedRow].lastIndex)
+        selectedCol = (selectedCol + dCol).coerceIn(0, g[selectedRow].lastIndex)
+        highlightVisible = true
+        Log.d(TAG, "move dRow=$dRow dCol=$dCol -> row=$selectedRow col=$selectedCol hl=$highlightVisible")
         invalidate()
     }
 
@@ -279,7 +283,8 @@ class KeyboardView(context: Context) : View(context) {
         for ((r, row) in cellRects.withIndex()) {
             for ((c, rect) in row.withIndex()) {
                 if (rect.contains(event.x, event.y)) {
-                    selectedRow = r; selectedCol = c
+                    // Tap = direct press. Selection/highlight stays a gamepad-only cursor.
+                    highlightVisible = false
                     pressKey(grid()[r][c].label)
                     performClick()
                     return true
@@ -316,7 +321,7 @@ class KeyboardView(context: Context) : View(context) {
                 val rect = RectF(x + 2, pad + r * rowH + 2, x + key.weight * cellW - 2, pad + (r + 1) * rowH - 2)
                 x += key.weight * cellW
                 rowRects += rect
-                val selected = r == selectedRow && c == selectedCol
+                val selected = highlightVisible && r == selectedRow && c == selectedCol
                 val paint = when {
                     selected -> selectedPaint
                     key.isAction -> actionPaint

@@ -192,8 +192,14 @@ private fun StatusTab(
             onEnable = onEnable,
             onToggleMode = onToggleMode,
         )
-        
+
         if (running) {
+            OutlinedButton(
+                onClick = { GamepadMouseService.instance?.setMode(ServiceMode.KEYBOARD) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Open keyboard mode")
+            }
             Text("Quick reference", style = MaterialTheme.typography.titleMedium)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -206,7 +212,8 @@ private fun StatusTab(
                     BindingLine("L3", "L3 (stick click)", "Home")
                     BindingLine("LB / RB", "Bumpers", "Slow / fast (hold)")
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    BindingLine("≡ + ⊙", "Start + Select", "Toggle mode", bold = true)
+                    BindingLine("≡ + ⊙", "Start + Select", "Cycle Gamepad → Mouse → Keyboard", bold = true)
+                    BindingLine("A / B / X", "In keyboard mode", "Type / close / delete")
                 }
             }
         }
@@ -408,7 +415,6 @@ private fun KeyboardSettingsTab(
         SwitchRow("Position keyboard at top", settings.keyboardAtTop) { scope.launch { repo.setKeyboardAtTop(it) } }
         SwitchRow("Show number row", settings.keyboardShowNumberRow) { scope.launch { repo.setKeyboardShowNumberRow(it) } }
         SwitchRow("Show system keys", settings.keyboardShowSystemKeys) { scope.launch { repo.setKeyboardShowSystemKeys(it) } }
-        SwitchRow("Automatically show for text fields", settings.autoShowKeyboardOnTextField) { scope.launch { repo.setAutoShowKeyboardOnTextField(it) } }
         Text("Keyboard color", style = MaterialTheme.typography.bodyMedium)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf(
@@ -430,9 +436,7 @@ private fun KeyboardSettingsTab(
         OutlinedTextField(
             value = keyboardTestText,
             onValueChange = { keyboardTestText = it },
-            modifier = Modifier.fillMaxWidth().onFocusChanged { state ->
-                if (state.isFocused && settings.autoShowKeyboardOnTextField) GamepadMouseService.instance?.showKeyboardForFocusedField()
-            },
+            modifier = Modifier.fillMaxWidth(),
             label = { Text("Keyboard input test") },
             placeholder = { Text("Focus this field to test typing") },
         )
