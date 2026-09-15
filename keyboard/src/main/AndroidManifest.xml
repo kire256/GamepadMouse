@@ -3,6 +3,11 @@
 
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.hardware.type.input_method" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- Voice input: mic key on the keyboard. Runtime permission is requested from
+         the Options screen (IMEs cannot show permission dialogs themselves). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Signature permission guarding the IME shown/hidden broadcast: only an app
          signed with our key (i.e. GamepadMouse) may receive it, and only WE may send it. -->

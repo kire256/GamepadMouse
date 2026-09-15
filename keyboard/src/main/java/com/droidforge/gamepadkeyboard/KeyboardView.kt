@@ -7,6 +7,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -42,6 +43,7 @@ class KeyboardView(context: Context) : View(context) {
         fun onCopy()
         fun onCut()
         fun onPaste()
+        fun onMicInput()
         fun onOpenOptions()
     }
 
@@ -63,6 +65,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_LEFT = "\u25C0"         // ◀
         const val KEY_RIGHT = "\u25B6"        // ▶
         const val KEY_HIDE = "\u2328"         // ⌨ hide
+        const val KEY_MIC = "\uD83C\uDFA4"    // 🎤 voice input
         const val KEY_SUGGEST = "S"
         const val KEY_CUT = "Cut"
         const val KEY_COPY = "Copy"
@@ -78,7 +81,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.2.3"
+        const val DISPLAY_VERSION = "v0.2.4"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -124,12 +127,13 @@ class KeyboardView(context: Context) : View(context) {
     private fun emojiKey(e: String) = Key(e)
     private fun fKey(n: Int) = Key("F$n", 1f, true)
 
-    /** Bottom bar, Deck-style: pages · wide space · ◀ ▶ · hide · options. */
+    /** Bottom bar, Deck-style: pages · wide space · ◀ ▶ · mic · hide · options. */
     private fun barRow(): List<Key> = listOf(
         Key(KEY_PAGES, 1.4f, true),
-        Key(KEY_SPACE, 5.6f, true),
+        Key(KEY_SPACE, 5.2f, true),
         Key(KEY_LEFT, 1.1f, true),
         Key(KEY_RIGHT, 1.1f, true),
+        Key(KEY_MIC, 1.3f, true),
         Key(KEY_HIDE, 1.3f, true),
         Key(KEY_OPTIONS, 1.1f, true),
     )
@@ -184,6 +188,10 @@ class KeyboardView(context: Context) : View(context) {
 
     /** Haptics on/off (user preference; applied by the service). */
     var hapticsEnabled = true
+
+    /** True while the service is listening to speech — mic key pulses amber. */
+    var micListening = false
+        set(value) { field = value; invalidate() }
 
     // ---- selection state ------------------------------------------------------
 
@@ -347,6 +355,7 @@ class KeyboardView(context: Context) : View(context) {
             KEY_LEFT -> moveSelection(0, -1)
             KEY_RIGHT -> moveSelection(0, 1)
             KEY_HIDE -> listener?.onHide()
+            KEY_MIC -> listener?.onMicInput()
             KEY_OPTIONS -> listener?.onOpenOptions()
             KEY_SUGGEST -> pressTopSuggestion()
             KEY_SELALL -> listener?.onSelectAll()
@@ -618,6 +627,13 @@ class KeyboardView(context: Context) : View(context) {
                 val selected = highlightVisible && r == selectedRow && c == selectedCol
 
                 when {
+                    // Listening: mic key pulses amber (invert on a 500ms blink)
+                    key.label == KEY_MIC && micListening -> {
+                        keyPaint.shader = null
+                        val blink = (SystemClock.uptimeMillis() / 250) % 2 == 0L
+                        keyPaint.color = if (blink) skin.flash else skin.selectFill
+                        canvas.drawRoundRect(rect, radius, radius, keyPaint)
+                    }
                     // Depressed keycap: darker inverted bevel, nudged down 1dp
                     isPressed || isFlash -> {
                         keyPaint.shader = keyShader(
@@ -698,6 +714,9 @@ class KeyboardView(context: Context) : View(context) {
             "$state \u00b7 $DISPLAY_VERSION \u00b7 A type \u00b7 B close \u00b7 X \u232b \u00b7 Y shift \u00b7 LB/RB pages \u00b7 S complete",
             10f, height - 4f * density, dimPaint,
         )
+
+        // Drive the mic-listening blink
+        if (micListening) postInvalidateDelayed(250)
     }
 
     private fun displayLabel(key: Key): String = when {

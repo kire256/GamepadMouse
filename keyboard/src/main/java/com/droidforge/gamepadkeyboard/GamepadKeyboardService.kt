@@ -39,6 +39,10 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     private lateinit var audio: KeyboardAudio
     private var lastAxisDump = ""
 
+    // ---- voice input ----
+    private var speech: android.speech.SpeechRecognizer? = null
+    private var listening = false
+
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     // Suggestion refresh after each key: let the InputConnection settle first.
@@ -70,6 +74,8 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onDestroy() {
         broadcastImeState(false)
+        runCatching { speech?.destroy() }
+        speech = null
         audio.release()
         super.onDestroy()
     }
@@ -327,6 +333,91 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
         // Keep the IME open underneath; the options screen floats above it.
+    }
+
+    // ---- voice input ----------------------------------------------------------
+
+    private fun micPermissionGranted(): Boolean =
+        checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    override fun onMicInput() {
+        if (!micPermissionGranted()) {
+            // IMEs can't show permission dialogs — Options requests it.
+            android.widget.Toast.makeText(
+                this, "Grant microphone in Keyboard Options", android.widget.Toast.LENGTH_LONG,
+            ).show()
+            onOpenOptions()
+            return
+        }
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+            android.widget.Toast.makeText(
+                this, "No speech recognition service on this device", android.widget.Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
+        if (listening) {  // mic key toggles listening off
+            stopListening()
+            return
+        }
+        val recognizer = speech ?: android.speech.SpeechRecognizer.createSpeechRecognizer(this).also {
+            it.setRecognitionListener(recognitionListener)
+            speech = it
+        }
+        recognizer.startListening(
+            android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(
+                    android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                )
+                putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            },
+        )
+    }
+
+    private fun stopListening() {
+        runCatching { speech?.stopListening() }
+    }
+
+    private fun setMicUi(listeningNow: Boolean) {
+        listening = listeningNow
+        keyboardView?.micListening = listeningNow
+    }
+
+    private val recognitionListener = object : android.speech.RecognitionListener {
+        override fun onReadyForSpeech(params: android.os.Bundle?) = setMicUi(true)
+        override fun onBeginningOfSpeech() = Unit
+        override fun onRmsChanged(rmsdB: Float) = Unit
+        override fun onBufferReceived(buffer: ByteArray?) = Unit
+        override fun onEndOfSpeech() = setMicUi(false)
+        override fun onError(error: Int) {
+            setMicUi(false)
+            val msg = when (error) {
+                android.speech.SpeechRecognizer.ERROR_NO_MATCH -> null  // silence: user said nothing
+                android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Heard nothing"
+                android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission missing"
+                else -> "Voice error $error"
+            }
+            msg?.let {
+                android.widget.Toast.makeText(this@GamepadKeyboardService, it, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        override fun onResults(results: android.os.Bundle?) {
+            setMicUi(false)
+            val text = results
+                ?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()
+                ?.trim()
+                .orEmpty()
+            if (text.isNotEmpty()) {
+                currentInputConnection?.commitText("$text ", 1)
+                audio.enter()
+            }
+        }
+
+        override fun onPartialResults(partialResults: android.os.Bundle?) = Unit
+        override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
     }
 
     // ---- prefs refresh (options screen may have changed things) ---------------

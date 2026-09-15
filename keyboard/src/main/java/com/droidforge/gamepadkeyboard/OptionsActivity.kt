@@ -84,6 +84,15 @@ class OptionsActivity : Activity() {
             root.findViewWithTag<TextView>("rate_label")?.text = "Hold-repeat rate — $v ms"
         }
 
+        // ---- Voice input ----
+        label("Microphone (voice dictation)", root)
+        root.addView(android.widget.Button(this).apply {
+            text = "Grant microphone permission"
+            setOnClickListener {
+                requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 7001)
+            }
+        })
+
         // ---- Learned words ----
         label("Learned words", root)
         val learner = WordLearner.instance ?: WordLearner(this)
