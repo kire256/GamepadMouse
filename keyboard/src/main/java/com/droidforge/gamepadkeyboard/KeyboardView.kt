@@ -50,7 +50,7 @@ class KeyboardView(context: Context) : View(context) {
     var listener: Listener? = null
 
     enum class Page(val tabLabel: String) {
-        LETTERS("ABC"), NUMBERS("123"), SYMBOLS("@#:"), EMOJI(":-)"), FN("Fn")
+        LETTERS("ABC"), NUMBERS("0-9"), SYMBOLS("@#:"), EMOJI(":-)"), FN("Fn")
     }
 
     companion object {
@@ -81,7 +81,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.2.4"
+        const val DISPLAY_VERSION = "v0.2.5"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -93,6 +93,18 @@ class KeyboardView(context: Context) : View(context) {
             listOf("👍","👎","👏","🙌","🤝","✌️","🤞","🤙","💪","🙏","👋","🫡","🤌"),
             listOf("❤️","💙","💚","💜","🖤","🔥","✨","⭐","🎉","🎮","🍕","☕","💀"),
         )
+
+        /** Numeric-only field classes auto-open the numeric pad page. */
+        fun pageForInputType(inputType: Int): Page {
+            val cls = inputType and android.text.InputType.TYPE_MASK_CLASS
+            return when (cls) {
+                android.text.InputType.TYPE_CLASS_NUMBER,
+                android.text.InputType.TYPE_CLASS_PHONE,
+                android.text.InputType.TYPE_CLASS_DATETIME,
+                -> Page.NUMBERS
+                else -> Page.LETTERS
+            }
+        }
     }
 
     // ---- palette (from Skin) --------------------------------------------------
@@ -146,11 +158,13 @@ class KeyboardView(context: Context) : View(context) {
         barRow(),
     )
 
+    /** Dedicated numeric pad: calculator-style 789 top, big digits, math + separators.
+     *  Auto-selected when a field's inputType is number/phone/datetime. */
     private val numberRows = listOf(
-        listOf(Key("1"),Key("2"),Key("3"),Key("4"),Key("5"),Key("6"),Key("7"),Key("8"),Key("9"),Key("0"), backspaceKey()),
-        listOf(Key(KEY_TAB,1.6f,true),Key("@"),Key("#"),Key("$"),Key("%"),Key("&"),Key("*"),Key("+"),Key("="),Key("~"),Key("^"),Key("!")),
-        listOf(Key(KEY_EMOJI_PAGE,1.7f,true),Key("("),Key(")"),Key("{"),Key("}"),Key("["),Key("]"),Key("\""),Key("'"),Key(";"),Key(":"), enterKey()),
-        listOf(shiftKey(),Key("<"),Key(">"),Key("-"),Key("_"),Key("/"),Key("?"),Key(","),Key("."),Key("|"), shiftKey()),
+        listOf(Key("7"), Key("8"), Key("9"), backspaceKey(1.6f)),
+        listOf(Key("4"), Key("5"), Key("6"), Key("+", 1.2f), Key("-", 1.2f)),
+        listOf(Key("1"), Key("2"), Key("3"), Key("×", 1.2f), Key("÷", 1.2f)),
+        listOf(Key(",", 1.2f), Key("0", 2.2f), Key(".", 1.2f), Key(":", 1.2f), enterKey(1.6f)),
         barRow(),
     )
 
@@ -722,7 +736,7 @@ class KeyboardView(context: Context) : View(context) {
     private fun displayLabel(key: Key): String = when {
         key.label == KEY_SPACE -> when (page) {
             Page.LETTERS -> "abc"
-            Page.NUMBERS -> "123"
+            Page.NUMBERS -> "0-9"
             Page.SYMBOLS -> "@#:"
             Page.EMOJI -> "\uD83D\uDE00"
             Page.FN -> "space"

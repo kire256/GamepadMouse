@@ -176,6 +176,47 @@ class KeyboardViewTest {
     }
 
     @Test
+    fun `numeric fields auto-open the numeric pad`() {
+        assertEquals(
+            KeyboardView.Page.NUMBERS,
+            KeyboardView.pageForInputType(
+                android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_VARIATION_NORMAL),
+        )
+        assertEquals(
+            KeyboardView.Page.NUMBERS,
+            KeyboardView.pageForInputType(android.text.InputType.TYPE_CLASS_PHONE),
+        )
+        assertEquals(
+            KeyboardView.Page.NUMBERS,
+            KeyboardView.pageForInputType(android.text.InputType.TYPE_CLASS_DATETIME),
+        )
+        assertEquals(
+            KeyboardView.Page.LETTERS,
+            KeyboardView.pageForInputType(android.text.InputType.TYPE_CLASS_TEXT),
+        )
+    }
+
+    @Test
+    fun `numeric pad types digits and math operators`() {
+        val l = RecordingListener()
+        val v = viewWith(l)
+        v.page = KeyboardView.Page.NUMBERS
+        v.moveSelection(-1, 0) // up to the 789 row (initial selection is row 1 = 456)
+        v.moveSelection(0, 1) // 7 -> 8
+        assertEquals("8", v.selectedKey())
+        v.pressSelectedKey()
+        assertEquals("8", l.keys.first())
+        // ÷ lives on row 2 (1 2 3 × ÷)
+        v.moveSelection(2, 0)
+        var col = 0
+        while (v.selectedKey() != "÷" && col < 12) { v.moveSelection(0, 1); col++ }
+        assertEquals("÷", v.selectedKey())
+        v.pressSelectedKey()
+        assertEquals("÷", l.keys.last())
+    }
+
+    @Test
     fun `all skins apply and view measures without crashing`() {
         Skin.entries.forEach { skin ->
             val v = KeyboardView(RuntimeEnvironment.getApplication())

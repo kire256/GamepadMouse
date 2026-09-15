@@ -11,8 +11,8 @@ android {
         applicationId = "com.droidforge.gamepadkeyboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.2.4-voice-input"
+        versionCode = 18
+        versionName = "0.2.5-numpad"
     }
 
     buildTypes {
