@@ -255,26 +255,21 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onEditorKey(keyCode: Int) {
         val ic = currentInputConnection ?: return
+        fun key(code: Int) {
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+        }
         when (keyCode) {
             KeyEvent.KEYCODE_FORWARD_DEL -> ic.deleteSurroundingText(0, 1)
-            KeyEvent.KEYCODE_MOVE_HOME -> ic.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MOVE_HOME))
-            KeyEvent.KEYCODE_MOVE_END -> ic.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MOVE_END))
-            KeyEvent.KEYCODE_PAGE_UP -> ic.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAGE_UP))
-            KeyEvent.KEYCODE_PAGE_DOWN -> ic.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAGE_DOWN))
-            KeyEvent.KEYCODE_DPAD_LEFT -> ic.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT))
-            KeyEvent.KEYCODE_DPAD_RIGHT -> ic.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT))
-            KeyEvent.KEYCODE_DPAD_UP -> ic.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP))
-            KeyEvent.KEYCODE_DPAD_DOWN -> ic.sendKeyEvent(
-                KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN))
-            in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 ->
-                ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            KeyEvent.KEYCODE_MOVE_HOME -> key(KeyEvent.KEYCODE_MOVE_HOME)
+            KeyEvent.KEYCODE_MOVE_END -> key(KeyEvent.KEYCODE_MOVE_END)
+            KeyEvent.KEYCODE_PAGE_UP -> key(KeyEvent.KEYCODE_PAGE_UP)
+            KeyEvent.KEYCODE_PAGE_DOWN -> key(KeyEvent.KEYCODE_PAGE_DOWN)
+            KeyEvent.KEYCODE_DPAD_LEFT -> key(KeyEvent.KEYCODE_DPAD_LEFT)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> key(KeyEvent.KEYCODE_DPAD_RIGHT)
+            KeyEvent.KEYCODE_DPAD_UP -> key(KeyEvent.KEYCODE_DPAD_UP)
+            KeyEvent.KEYCODE_DPAD_DOWN -> key(KeyEvent.KEYCODE_DPAD_DOWN)
+            in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 -> key(keyCode)
         }
         audio.tap()
     }
