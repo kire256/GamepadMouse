@@ -194,12 +194,6 @@ private fun StatusTab(
         )
 
         if (running) {
-            OutlinedButton(
-                onClick = { GamepadMouseService.instance?.setMode(ServiceMode.KEYBOARD) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Open keyboard mode")
-            }
             Text("Quick reference", style = MaterialTheme.typography.titleMedium)
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

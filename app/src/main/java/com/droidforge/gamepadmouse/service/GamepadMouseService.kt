@@ -337,6 +337,13 @@ class GamepadMouseService : AccessibilityService() {
     }
 
     fun setMode(newMode: ServiceMode) {
+        // Legacy in-app keyboard retired (2026-09-15): the standalone Gamepad Keyboard
+        // IME replaces it. Any path that asks for KEYBOARD mode is a no-op so the
+        // system IME — which the legacy mode used to hide — always handles text.
+        if (newMode == ServiceMode.KEYBOARD) {
+            Log.i(TAG, "legacy keyboard mode retired; ignoring request")
+            return
+        }
         if (_mode.value == newMode) return
         Log.d(TAG, "mode request ${_mode.value} -> $newMode")
         bindingMatcher.reset()
