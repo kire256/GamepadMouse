@@ -2,8 +2,21 @@
 
 ## Current milestone
 
-**Gamepad Keyboard** (`:keyboard` module) — standalone PS-style IME, current on-device version **v0.1.8-hint-fix**.
-App itself (mouse/gamepad modes) is parked: force-stopped on device, accessibility service disabled.
+**Gamepad + Keyboard coexistence** (2026-09-15): GamepadMouse **v0.5.16** and Gamepad Keyboard **v0.1.10** both live on the Fold 6, working together.
+Legacy in-app keyboard mode is RETIRED — text input always goes through the standalone IME.
+
+## Revival + coexistence (2026-09-15)
+
+- **Pointer presence** (v0.5.12/.13): cursor hides when no gamepad is connected, reappears on connect.
+  Pitfall found: Android's built-in `-1: Virtual` input device claims DPAD — must filter `isVirtual` or presence is always true.
+- **IME state handshake** (kb v0.1.10 / app v0.5.16): IME broadcasts shown/hidden to package-targeted receiver
+  (`com.droidforge.gamepadkeyboard.IME_STATE`, signature-permission `...permission.KB_IME_STATE`).
+  CRITICAL: implicit custom broadcasts are DROPPED on API 26+ — must `setPackage()`. Symptom was "A/B work, d-pad dead".
+- **Motion release** (v0.5.14): `setMotionEventSources` CONSUMES hat/stick events system-wide; while the IME is up the
+  service sets sources 0 so d-pad reaches the IME, re-arms on close (except GAMEPAD mode). Keys already stood down
+  via `isGamepadKeyboardImeActive()` (reads DEFAULT_INPUT_METHOD — works for any IME; only our IME triggers motion release).
+- **Legacy keyboard retired** (v0.5.15): `setMode(KEYBOARD)` is a logged no-op; Status button removed; chord toggles GAMEPAD ↔ MOUSE.
+  Old overlay used to call `setSystemImeHidden(true)` — that hid the system IME and blocked the whole new flow.
 
 ## Gamepad Keyboard — status (2026-09-14)
 
