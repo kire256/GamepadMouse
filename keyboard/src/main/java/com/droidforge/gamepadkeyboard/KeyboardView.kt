@@ -134,7 +134,7 @@ class KeyboardView(context: Context) : View(context) {
         Key(KEY_OPTIONS, 1.1f, true),
     )
 
-    private val letterRows = listOf(
+    internal val letterRows = listOf(
         listOf(Key("`"),Key("1"),Key("2"),Key("3"),Key("4"),Key("5"),Key("6"),Key("7"),Key("8"),Key("9"),Key("0"),Key("-"),Key("="), backspaceKey()),
         listOf(Key(KEY_TAB,1.6f,true),Key("q"),Key("w"),Key("e"),Key("r"),Key("t"),Key("y"),Key("u"),Key("i"),Key("o"),Key("p"),Key("["),Key("]"),Key("\\")),
         listOf(Key(KEY_CAPS,1.7f,true),Key("a"),Key("s"),Key("d"),Key("f"),Key("g"),Key("h"),Key("j"),Key("k"),Key("l"),Key(";"),Key("'"), enterKey()),
