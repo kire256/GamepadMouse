@@ -4,6 +4,13 @@
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <uses-feature android:name="android.hardware.type.input_method" android:required="false" />
 
+    <!-- Signature permission guarding the IME shown/hidden broadcast: only an app
+         signed with our key (i.e. GamepadMouse) may receive it, and only WE may send it. -->
+    <permission
+        android:name="com.droidforge.gamepad.permission.KB_IME_STATE"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.droidforge.gamepad.permission.KB_IME_STATE" />
+
     <application
         android:allowBackup="true"
         android:icon="@android:drawable/sym_def_app_icon"

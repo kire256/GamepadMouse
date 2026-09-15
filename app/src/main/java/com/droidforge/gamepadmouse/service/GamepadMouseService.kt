@@ -88,12 +88,26 @@ class GamepadMouseService : AccessibilityService() {
             _recordedChord.value = null
             instance?.beginChordRecording()
         }
-        
+
         fun stopChordRecording() {
             _recordingChord.value = false
             _recordedChord.value = null
             instance?.heldForRecording?.clear()
         }
+
+        // True while the Gamepad Keyboard IME's surface is on-screen. When set, the
+        // service stands down: sticks navigate the IME's keys, not our cursor.
+        @Volatile
+        var imeOverlayUp: Boolean = false
+            private set
+
+        fun setImeOverlayUp(up: Boolean) {
+            imeOverlayUp = up
+        }
+
+        /** Broadcast actions shared with the :keyboard module's IME. */
+        const val ACTION_IME_STATE = "com.droidforge.gamepadkeyboard.IME_STATE"
+        const val EXTRA_IME_SHOWN = "shown"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -124,6 +138,9 @@ class GamepadMouseService : AccessibilityService() {
     private var joystickCapture: JoystickCaptureView? = null
     private var displayW = 1080f
     private var displayH = 1920f
+
+    // Controller presence: the pointer is hidden while no gamepad is connected.
+    private var inputDeviceListener: android.hardware.input.InputManager.InputDeviceListener? = null
 
     private val chord = ChordDetector(DefaultBindings.toggleChord)
     private val heldModifiers = HashSet<MouseAction>()
@@ -202,6 +219,7 @@ class GamepadMouseService : AccessibilityService() {
                 }
             }
         }
+        registerInputDeviceListener()
         Log.i(TAG, "service connected")
     }
 
@@ -216,6 +234,7 @@ class GamepadMouseService : AccessibilityService() {
     }
 
     private fun teardown() {
+        unregisterInputDeviceListener()
         removeOverlay()
         removeKeyboardOverlay()
         scope.cancel()
@@ -269,6 +288,8 @@ class GamepadMouseService : AccessibilityService() {
 
     /** Joystick/hat events delivered straight to the service (API 34+, no window). */
     override fun onMotionEvent(event: android.view.MotionEvent) {
+        // Keyboard IME is up → sticks belong to it (key navigation), not the cursor.
+        if (Companion.imeOverlayUp) return
         when (_mode.value) {
             ServiceMode.MOUSE -> onJoystick(event)
             ServiceMode.KEYBOARD -> {
@@ -351,10 +372,61 @@ class GamepadMouseService : AccessibilityService() {
         hideJob = null
     }
     
+    // ------------------------------------------------ controller presence
+
+    private fun registerInputDeviceListener() {
+        val listener = object : android.hardware.input.InputManager.InputDeviceListener {
+            override fun onInputDeviceAdded(deviceId: Int) = applyControllerPresence()
+            override fun onInputDeviceRemoved(deviceId: Int) = applyControllerPresence()
+            override fun onInputDeviceChanged(deviceId: Int) = applyControllerPresence()
+        }
+        inputDeviceListener = listener
+        (getSystemService(INPUT_SERVICE) as android.hardware.input.InputManager)
+            .registerInputDeviceListener(listener, null)
+    }
+
+    private fun unregisterInputDeviceListener() {
+        inputDeviceListener?.let {
+            runCatching {
+                (getSystemService(INPUT_SERVICE) as android.hardware.input.InputManager)
+                    .unregisterInputDeviceListener(it)
+            }
+        }
+        inputDeviceListener = null
+    }
+
+    /** True when any gamepad-ish device (sticks, buttons, or d-pad) is connected. */
+    private fun anyGamepadConnected(): Boolean = InputDevice.getDeviceIds().any { id ->
+        val dev = InputDevice.getDevice(id) ?: return@any false
+        val s = dev.sources
+        s and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK ||
+            s and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
+            s and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD
+    }
+
+    /** No controller → cursor hidden; controller (re)appears → cursor back. */
+    private fun applyControllerPresence() {
+        val ov = overlay ?: return
+        if (anyGamepadConnected()) {
+            if (!ov.isVisible) {
+                ov.isVisible = true
+                ov.invalidate()
+                Log.i(TAG, "controller connected -> cursor shown")
+            }
+        } else {
+            if (ov.isVisible) {
+                hideCursor()
+                ov.invalidate()
+                Log.i(TAG, "no controller -> cursor hidden")
+            }
+        }
+    }
+
     private fun resetAutoHideTimer() {
         val timeout = settings.autoHideTimeoutMs
         if (timeout <= 0) return  // Disabled
-        
+        if (imeOverlayUp) return  // keyboard IME up: leave the cursor alone
+
         lastCursorActivity = System.currentTimeMillis()
         hideJob?.cancel()
         hideJob = scope.launch {
@@ -496,6 +568,7 @@ class GamepadMouseService : AccessibilityService() {
         } catch (t: Throwable) {
             Log.e(TAG, "addOverlay failed", t)
         }
+        applyControllerPresence()
     }
 
     private fun removeOverlay() {

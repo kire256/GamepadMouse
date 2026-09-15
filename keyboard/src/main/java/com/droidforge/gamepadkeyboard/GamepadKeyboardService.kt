@@ -15,6 +15,11 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private companion object {
         const val TAG = "GPKeyboard"
+
+        /** Tells the GamepadMouse app when this IME's surface is on-screen (it then
+         *  stands its cursor down — sticks belong to key navigation while we're up). */
+        const val ACTION_IME_STATE = "com.droidforge.gamepadkeyboard.IME_STATE"
+        const val EXTRA_SHOWN = "shown"
     }
 
     private var keyboardView: KeyboardView? = null
@@ -97,6 +102,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         dismissed = false
+        broadcastImeState(true)
         keyboardView?.layout = KeyboardView.Layout.LETTERS
         keyboardView?.shiftEnabled = false
         keyboardView?.capsLockEnabled = false
@@ -148,6 +154,18 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onHide() {
         dismissed = true
+        broadcastImeState(false)
         requestHideSelf(0)
+    }
+
+    override fun onDestroy() {
+        broadcastImeState(false)
+        super.onDestroy()
+    }
+
+    private fun broadcastImeState(shown: Boolean) {
+        val intent = android.content.Intent(ACTION_IME_STATE).putExtra(EXTRA_SHOWN, shown)
+        runCatching { sendBroadcast(intent) }
+        Log.d(TAG, "broadcast ime state shown=$shown")
     }
 }
