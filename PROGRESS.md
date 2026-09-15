@@ -2,9 +2,23 @@
 
 ## Current milestone
 
-Phase 2 input customization and keyboard-mode iteration.
+**Gamepad Keyboard** (`:keyboard` module) — standalone PS-style IME, current on-device version **v0.1.8-hint-fix**.
+App itself (mouse/gamepad modes) is parked: force-stopped on device, accessibility service disabled.
 
-## Implemented
+## Gamepad Keyboard — status (2026-09-14)
+
+- Package `com.droidforge.gamepadkeyboard.debug` / `.GamepadKeyboardService`, set as active IME on the Fold 6.
+- Mapping: d-pad + left stick move selection · **A = type selected key, B = close**, X = backspace, Y = shift,
+  LB/RB = cycle layout, Start = enter, Select/Back = close. Touch taps type directly.
+- Fixed this session: horizontal nav no-op (`moveSelection` never added `dCol` — the whole left/right saga,
+  fixed v0.1.7); tap-then-highlight residue (highlight is now gamepad-cursor-only, v0.1.5); A/B hint text
+  matched to real mapping (v0.1.8). Caps model v0.1.4: autoCap one-shot + shift one-shot + caps lock.
+- Input pipeline verified end-to-end with device-side `getevent`: DS4 d-pad emits only `ABS_HAT0X/HAT0Y`
+  (no `BTN_DPAD_*`), Samsung forwards hat motion straight to the IME; 22/22 events matched in kernel vs app logs.
+- Root cause of the original "left/right dead": GamepadMouse was ANR-wedged ("waited 10000ms for FocusEvent"),
+  stalling input dispatch. Force-stopped; problem never reproduced after.
+
+## App (mouse/gamepad modes) — implemented
 
 - System-wide gamepad mouse mode through an AccessibilityService.
 - Cursor movement, click/long-press, right-stick scrolling, and configurable bindings.

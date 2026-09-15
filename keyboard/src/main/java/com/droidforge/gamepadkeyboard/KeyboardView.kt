@@ -42,7 +42,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_DONE = "Done"
 
         /** Shown in the keyboard's bottom bar so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.1.7"
+        const val DISPLAY_VERSION = "v0.1.8"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -364,7 +364,7 @@ class KeyboardView(context: Context) : View(context) {
         // Hint
         tabTextPaint.textSize = 20f * resources.displayMetrics.density
         canvas.drawText(
-            "\u00B7 A close \u00B7 B type \u00B7 X \u232B \u00B7 Y shift \u00B7 LB/RB tabs \u00B7 Start \u21B5",
+            "\u00B7 A type \u00B7 B close \u00B7 X \u232B \u00B7 Y shift \u00B7 LB/RB tabs \u00B7 Start \u21B5",
             doneRect.left - 24f, barTop + bottomBarPx / 2 + tabTextPaint.textSize / 3, tabTextPaint,
         )
     }
