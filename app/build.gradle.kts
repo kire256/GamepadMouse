@@ -13,8 +13,8 @@ android {
         applicationId = "com.droidforge.gamepadmouse"
         minSdk = 26          // dispatchGesture + TYPE_ACCESSIBILITY_OVERLAY (API 24+); 26 for stable overlay behavior
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.5.12-pointer-presence"
+        versionCode = 22
+        versionName = "0.5.14-release-motion-for-ime"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

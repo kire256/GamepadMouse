@@ -102,7 +102,9 @@ class GamepadMouseService : AccessibilityService() {
             private set
 
         fun setImeOverlayUp(up: Boolean) {
+            val changed = imeOverlayUp != up
             imeOverlayUp = up
+            if (changed) instance?.onImeOverlayChanged(up)
         }
 
         /** Broadcast actions shared with the :keyboard module's IME. */
@@ -286,9 +288,26 @@ class GamepadMouseService : AccessibilityService() {
         }
     }
 
+    /**
+     * The standalone keyboard IME just showed/hid. While it's up we must RELEASE the
+     * API-34+ motion-event hook — setMotionEventSources CONSUMES hat/stick events at
+     * the system level, so with it armed the IME never sees d-pad input. Re-arm when
+     * the IME hides, except in GAMEPAD mode where sticks belong to the game.
+     */
+    private fun onImeOverlayChanged(up: Boolean) {
+        if (Build.VERSION.SDK_INT < 34) return
+        when {
+            up -> enableMotionEventSources(false)
+            _mode.value == ServiceMode.GAMEPAD -> Unit  // sticks stay with the game
+            else -> enableMotionEventSources(true)
+        }
+        Log.i(TAG, "ime overlay up=$up -> motionSources=${if (up || _mode.value == ServiceMode.GAMEPAD) 0 else "on"}")
+    }
+
     /** Joystick/hat events delivered straight to the service (API 34+, no window). */
     override fun onMotionEvent(event: android.view.MotionEvent) {
         // Keyboard IME is up → sticks belong to it (key navigation), not the cursor.
+        // (Sources are also released in onImeOverlayChanged; this covers the race.)
         if (Companion.imeOverlayUp) return
         when (_mode.value) {
             ServiceMode.MOUSE -> onJoystick(event)
@@ -395,19 +414,34 @@ class GamepadMouseService : AccessibilityService() {
         inputDeviceListener = null
     }
 
-    /** True when any gamepad-ish device (sticks, buttons, or d-pad) is connected. */
-    private fun anyGamepadConnected(): Boolean = InputDevice.getDeviceIds().any { id ->
-        val dev = InputDevice.getDevice(id) ?: return@any false
-        val s = dev.sources
-        s and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK ||
-            s and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
-            s and InputDevice.SOURCE_DPAD == InputDevice.SOURCE_DPAD
+    /** Connected non-virtual gamepad-ish devices (sticks, buttons, or d-pad). */
+    private fun connectedGamepads(): List<InputDevice> {
+        val out = mutableListOf<InputDevice>()
+        for (id in InputDevice.getDeviceIds()) {
+            val dev = InputDevice.getDevice(id) ?: continue
+            if (dev.isVirtual) continue  // Android's built-in virtual device claims DPAD!
+            val s = dev.sources
+            val gamepad = (s and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK ||
+                (s and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+                (s and InputDevice.SOURCE_DPAD) == InputDevice.SOURCE_DPAD
+            if (gamepad) out.add(dev)
+        }
+        return out
     }
+
+    /** True when any real (non-virtual) gamepad is connected. */
+    private fun anyGamepadConnected(): Boolean = connectedGamepads().isNotEmpty()
+
+    /** Names of connected non-virtual gamepad-ish devices (for the presence log). */
+    private fun gamepadDeviceNames(): String =
+        connectedGamepads().joinToString(prefix = "[", postfix = "]") { it.name }
 
     /** No controller → cursor hidden; controller (re)appears → cursor back. */
     private fun applyControllerPresence() {
         val ov = overlay ?: return
-        if (anyGamepadConnected()) {
+        val present = anyGamepadConnected()
+        Log.d(TAG, "presence check: gamepads=$present ${gamepadDeviceNames()}")
+        if (present) {
             if (!ov.isVisible) {
                 ov.isVisible = true
                 ov.invalidate()
