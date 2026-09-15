@@ -5,18 +5,19 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 
 /**
- * Gamepad-navigable on-screen keyboard.
+ * Gamepad-navigable on-screen keyboard, styled after the PlayStation console keyboard.
  *
  * Gamepad mapping:
  *  - D-pad / left stick: move key selection
- *  - A: press selected key     B: hide keyboard
- *  - X: backspace              Y: shift
- *  - LB/RB: switch layout      Start: Enter     Select/Back: hide
+ *  - A: close keyboard (back)      B: press selected key (type)
+ *  - X: backspace                  Y: shift
+ *  - LB/RB: switch layout          Start: Enter      Select: close
  *
  * Touch works too: tapping a key presses it directly.
  */
@@ -31,33 +32,40 @@ class KeyboardView(context: Context) : View(context) {
 
     var listener: Listener? = null
 
-    enum class Layout { LETTERS, NUMBERS, SYMBOLS }
+    enum class Layout(val tabLabel: String) { LETTERS("ABC"), NUMBERS("123"), SYMBOLS("@#:") }
 
     companion object {
-        const val KEY_SHIFT = "\u21E7"      // ⇧
-        const val KEY_CAPS = "CAPS"
-        const val KEY_BACKSPACE = "\u232B"  // ⌫
-        const val KEY_SPACE = "SPACE"
-        const val KEY_ENTER = "ENTER"
-        const val KEY_HIDE = "HIDE"
+        const val KEY_SHIFT = "\u21E7"       // ⇧
+        const val KEY_BACKSPACE = "\u232B"   // ⌫
+        const val KEY_ENTER = "\u21B5"       // ↵
+        const val KEY_SPACE = " "
+        const val KEY_DONE = "Done"
+
+        /** Shown in the keyboard's bottom bar so on-device builds are always identifiable. */
+        const val DISPLAY_VERSION = "v0.1.4"
+        private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
     }
 
-    private val letters = listOf(
-        arrayOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
-        arrayOf("a", "s", "d", "f", "g", "h", "j", "k", "l"),
-        arrayOf("z", "x", "c", "v", "b", "n", "m"),
+    // PlayStation-style letter grid: numbers+@ / QWERTY+# / home row+"/" / ZXCV with -_?!
+    private val letterRows = listOf(
+        listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "@"),
+        listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "#"),
+        listOf("a", "s", "d", "f", "g", "h", "j", "k", "l", "\"", "/"),
+        listOf("z", "x", "c", "v", "b", "n", "m", ".", "-", "_", "?", "!"),
     )
-    private val numbers = listOf(
-        arrayOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
-        arrayOf("-", "/", ":", ";", "(", ")", "$", "&", "@", "\""),
-        arrayOf(".", ",", "?", "!", "'", "_"),
+    private val numberRows = listOf(
+        listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "@"),
+        listOf("#", "/", "&", "$", "%", "*", "+", "=", "~", "^", "|"),
+        listOf(":", ";", "(", ")", "\"", "'", "."),
+        listOf("<", ">", "[", "]", "{", "}"),
     )
-    private val symbols = listOf(
-        arrayOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "="),
-        arrayOf("~", "\\", "|", "<", ">", "\u20AC", "\u00A3", "\u00A5", "\u2022", "\u00B0"),
-        arrayOf(".", ",", "?", "!", "'", "\""),
+    private val symbolRows = listOf(
+        listOf("€", "£", "¥", "¢", "°", "•", "¡", "¿", "«", "»", "§"),
+        listOf("à", "á", "é", "è", "í", "ó", "ú", "ü", "ñ", "ç", "ß"),
+        listOf("ā", "ē", "ī", "ō", "ū", "â", "ê", "î", "ô", "û", "ã"),
+        listOf("Ã", "Æ", "Ø", "Å", "Œ", "Þ", "Ð", "Ý", "Ø", "Λ", "Ω"),
     )
 
     var layout: Layout = Layout.LETTERS
@@ -66,96 +74,158 @@ class KeyboardView(context: Context) : View(context) {
         set(value) { field = value; invalidate() }
     var capsLockEnabled = false
         set(value) { field = value; invalidate() }
-    var keyboardColor = 0xEE14141B.toInt()
+    /** One-shot auto-capitalize from the field's CAP_SENTENCES flag (first letter only). */
+    var autoCap = false
+        set(value) { field = value; invalidate() }
+    var keyboardColor = 0xFF111318.toInt()
         set(value) { field = value; invalidate() }
 
     private var selectedRow = 1
     private var selectedCol = 0
 
+    // Fixed height the view asserts regardless of the IME window's measuring spec —
+    // without this some devices stretch the keyboard to fill the whole screen.
+    private var desiredHeightPx = -1
+
     // Key-repeat while a d-pad direction is held
     private var repeatRunnable: Runnable? = null
     private var repeatDirection: Pair<Int, Int>? = null
 
-    private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = keyboardColor }
-    private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF2A2E37.toInt() }
+    private val bgPaint = Paint().apply { color = keyboardColor }
+    private val keyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF23262E.toInt() }
+    private val tabPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1B1E25.toInt() }
+    private val activeTabPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF2C3038.toInt() }
     private val selectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF3D81F6.toInt() }
+    private val actionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF2C3038.toInt() }
     private val keyTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE; textAlign = Paint.Align.CENTER
     }
-    private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF9AA3AF.toInt(); textSize = 24f; textAlign = Paint.Align.CENTER
+    private val tabTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFB9C0CB.toInt(); textAlign = Paint.Align.CENTER
+    }
+    private val statePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF9AA3AF.toInt(); textAlign = Paint.Align.LEFT
+    }
+    private val donePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE; textAlign = Paint.Align.CENTER
     }
 
     init { setWillNotDraw(false) }
 
-    private fun rows(): List<Array<String>> {
-        val rows = mutableListOf<Array<String>>()
-        if (layout == Layout.LETTERS) rows += arrayOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
-        rows += when (layout) {
-            Layout.LETTERS -> letters
-            Layout.NUMBERS -> numbers
-            Layout.SYMBOLS -> symbols
-        }
-        rows += arrayOf(KEY_SHIFT, KEY_CAPS, KEY_BACKSPACE, KEY_SPACE, KEY_ENTER, KEY_HIDE)
-        return rows
+    /** Height in px the keyboard should occupy; call before the view is attached. */
+    fun setDesiredHeightPx(px: Int) {
+        desiredHeightPx = px
+        requestLayout()
     }
 
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = getDefaultSize(suggestedMinimumWidth, widthMeasureSpec)
+        val h = if (desiredHeightPx > 0) resolveSize(desiredHeightPx, heightMeasureSpec)
+        else getDefaultSize(suggestedMinimumHeight, heightMeasureSpec)
+        setMeasuredDimension(w, h)
+    }
+
+    // ---- grid model -----------------------------------------------------------
+
+    /** One key: label + grid width weight (1 = normal cell). */
+    private data class Key(val label: String, val weight: Float = 1f, val isAction: Boolean = false)
+
+    private fun letterGrid(): List<List<Key>> {
+        val grid = letterRows.map { row -> row.map { Key(it) } }.toMutableList()
+        val sysRow = mutableListOf(
+            Key(KEY_SHIFT, 1.2f, true),
+            Key(Layout.LETTERS.tabLabel, 1.2f, true),
+            Key(Layout.SYMBOLS.tabLabel, 1.2f, true),
+            Key(KEY_SPACE, 3.4f, true),
+            Key(KEY_ENTER, 1.4f, true),
+            Key(KEY_BACKSPACE, 1.6f, true),
+        )
+        grid += listOf(sysRow)
+        return grid
+    }
+
+    private fun symbolGrid(): List<List<Key>> {
+        val grid = (if (layout == Layout.NUMBERS) numberRows else symbolRows)
+            .map { row -> row.map { Key(it) } }.toMutableList()
+        val sysRow = mutableListOf(
+            Key(KEY_SHIFT, 1.2f, true),
+            Key(Layout.LETTERS.tabLabel, 1.2f, true),
+            Key(Layout.SYMBOLS.tabLabel, 1.2f, true),
+            Key(KEY_SPACE, 3.4f, true),
+            Key(KEY_ENTER, 1.4f, true),
+            Key(KEY_BACKSPACE, 1.6f, true),
+        )
+        grid += listOf(sysRow)
+        return grid
+    }
+
+    private fun grid(): List<List<Key>> =
+        if (layout == Layout.LETTERS) letterGrid() else symbolGrid()
+
     private fun normalizeSelection() {
-        val rows = rows()
-        selectedRow = selectedRow.coerceIn(0, rows.lastIndex)
-        selectedCol = selectedCol.coerceIn(0, rows[selectedRow].lastIndex)
+        val g = grid()
+        selectedRow = selectedRow.coerceIn(0, g.lastIndex)
+        selectedCol = selectedCol.coerceIn(0, g[selectedRow].lastIndex)
     }
 
     fun moveSelection(dRow: Int, dCol: Int) {
-        val rows = rows()
-        selectedRow = (selectedRow + dRow).coerceIn(0, rows.lastIndex)
-        selectedCol = selectedCol.coerceIn(0, rows[selectedRow].lastIndex)
+        val g = grid()
+        selectedRow = (selectedRow + dRow).coerceIn(0, g.lastIndex)
+        selectedCol = selectedCol.coerceIn(0, g[selectedRow].lastIndex)
         invalidate()
     }
 
-    fun selectedKey(): String = rows()[selectedRow][selectedCol]
+    fun selectedKey(): String = grid()[selectedRow][selectedCol].label
 
     fun pressSelectedKey() = pressKey(selectedKey())
 
-    fun pressKey(key: String) {
-        when (key) {
+    fun pressKey(label: String) {
+        when (label) {
             KEY_SHIFT -> shiftEnabled = !shiftEnabled
-            KEY_CAPS -> capsLockEnabled = !capsLockEnabled
             KEY_BACKSPACE -> listener?.onBackspace()
-            KEY_SPACE -> { listener?.onKey(" "); consumeOneShotShift() }
             KEY_ENTER -> { listener?.onEnter(); consumeOneShotShift() }
-            KEY_HIDE -> listener?.onHide()
+            KEY_DONE -> listener?.onHide()
+            KEY_SPACE -> { listener?.onKey(" "); consumeOneShotShift() }
+            Layout.LETTERS.tabLabel -> layout = Layout.LETTERS
+            Layout.SYMBOLS.tabLabel -> layout = if (layout == Layout.SYMBOLS) Layout.NUMBERS else Layout.SYMBOLS
             else -> {
-                val upper = capsLockEnabled xor shiftEnabled
-                listener?.onKey(if (key.length == 1 && key[0].isLetter() && upper) key.uppercase() else key)
+                // Case model: capsLock = sustained upper; shift = one-shot upper;
+                // autoCap = one-shot upper seeded from the field's sentence caps.
+                val upper = capsLockEnabled || shiftEnabled || autoCap
+                listener?.onKey(if (label.length == 1 && label[0].isLetter() && upper) label.uppercase() else label)
                 consumeOneShotShift()
             }
         }
         invalidate()
     }
 
-    private fun consumeOneShotShift() { if (shiftEnabled) shiftEnabled = false }
+    private fun consumeOneShotShift() {
+        if (shiftEnabled) shiftEnabled = false
+        autoCap = false
+    }
 
-    /**
-     * Gamepad key routing. Returns true when consumed.
-     * D-pad repeat starts after [REPEAT_DELAY_MS], then fires every [REPEAT_RATE_MS].
-     */
-    fun onGamepadKeyDown(keyCode: Int): Boolean = when (keyCode) {
-        KeyEvent.KEYCODE_DPAD_UP -> { startRepeat(-1, 0); true }
-        KeyEvent.KEYCODE_DPAD_DOWN -> { startRepeat(1, 0); true }
-        KeyEvent.KEYCODE_DPAD_LEFT -> { startRepeat(0, -1); true }
-        KeyEvent.KEYCODE_DPAD_RIGHT -> { startRepeat(0, 1); true }
-        KeyEvent.KEYCODE_DPAD_CENTER,
-        KeyEvent.KEYCODE_BUTTON_A -> { pressSelectedKey(); true }
-        KeyEvent.KEYCODE_BUTTON_B,
-        KeyEvent.KEYCODE_BACK -> { listener?.onHide(); true }
-        KeyEvent.KEYCODE_BUTTON_X -> { listener?.onBackspace(); true }
-        KeyEvent.KEYCODE_BUTTON_Y -> { shiftEnabled = !shiftEnabled; true }
-        KeyEvent.KEYCODE_BUTTON_L1 -> { cycleLayout(-1); true }
-        KeyEvent.KEYCODE_BUTTON_R1 -> { cycleLayout(1); true }
-        KeyEvent.KEYCODE_BUTTON_START -> { listener?.onEnter(); true }
-        KeyEvent.KEYCODE_BUTTON_SELECT -> { listener?.onHide(); true }
-        else -> false
+    // ---- gamepad --------------------------------------------------------------
+
+    /** Gamepad key routing. Returns true when consumed. */
+    fun onGamepadKeyDown(keyCode: Int): Boolean {
+        Log.d(TAG, "onGamepadKeyDown ${KeyEvent.keyCodeToString(keyCode)}")
+        return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> { startRepeat(-1, 0); true }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { startRepeat(1, 0); true }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { startRepeat(0, -1); true }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { startRepeat(0, 1); true }
+            KeyEvent.KEYCODE_DPAD_CENTER -> { pressSelectedKey(); true }
+            // Erik's spec (v3): A = type, B = close (matches Android convention)
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> { pressSelectedKey(); true }
+            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { listener?.onHide(); true }
+            KeyEvent.KEYCODE_BUTTON_X -> { listener?.onBackspace(); true }
+            KeyEvent.KEYCODE_BUTTON_Y -> { shiftEnabled = !shiftEnabled; true }
+            KeyEvent.KEYCODE_BUTTON_L1 -> { cycleLayout(-1); true }
+            KeyEvent.KEYCODE_BUTTON_R1 -> { cycleLayout(1); true }
+            KeyEvent.KEYCODE_BUTTON_START -> { listener?.onEnter(); true }
+            KeyEvent.KEYCODE_BUTTON_SELECT -> { listener?.onHide(); true }
+            else -> false
+        }
     }
 
     fun onGamepadKeyUp(keyCode: Int): Boolean {
@@ -200,55 +270,97 @@ class KeyboardView(context: Context) : View(context) {
         super.onDetachedFromWindow()
     }
 
+    // ---- touch ----------------------------------------------------------------
+
+    private var cellRects: List<List<RectF>> = emptyList()
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action != MotionEvent.ACTION_UP) return true
-        val key = keyAt(event.x, event.y)
-        if (key != null) pressKey(key)
-        performClick()
+        for ((r, row) in cellRects.withIndex()) {
+            for ((c, rect) in row.withIndex()) {
+                if (rect.contains(event.x, event.y)) {
+                    selectedRow = r; selectedCol = c
+                    pressKey(grid()[r][c].label)
+                    performClick()
+                    return true
+                }
+            }
+        }
         return true
     }
 
     override fun performClick(): Boolean { super.performClick(); return true }
 
-    private fun keyAt(x: Float, y: Float): String? {
-        val rows = rows()
-        val pad = 10f
-        val rowH = (height - 2 * pad) / rows.size
-        val row = ((y - pad) / rowH).toInt().coerceIn(0, rows.lastIndex)
-        val keyW = (width - 2 * pad) / rows[row].size
-        val col = ((x - pad) / keyW).toInt().coerceIn(0, rows[row].lastIndex)
-        selectedRow = row; selectedCol = col; invalidate()
-        return rows[row][col]
-    }
+    // ---- drawing --------------------------------------------------------------
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        keyboardColor.let { bgPaint.color = it }
-        val rows = rows()
-        val pad = 10f
-        val rowH = (height - 2 * pad) / rows.size
-        rows.forEachIndexed { r, row ->
-            val keyW = (width - 2 * pad) / row.size
+        bgPaint.color = keyboardColor
+        // Opaque background — the IME window is translucent by default; without this
+        // the app underneath shows through the gaps between keys.
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+
+        val g = grid()
+        val pad = 8f
+        val bottomBarPx = 34f * resources.displayMetrics.density
+        val gridH = height - bottomBarPx - pad
+        val rowH = gridH / g.size
+        val newRects = mutableListOf<List<RectF>>()
+
+        g.forEachIndexed { r, row ->
+            val totalWeight = row.sumOf { it.weight.toDouble() }.toFloat()
+            val cellW = (width - 2 * pad) / totalWeight
+            val rowRects = mutableListOf<RectF>()
+            var x = pad
             row.forEachIndexed { c, key ->
-                val rect = RectF(pad + c * keyW + 3, pad + r * rowH + 3, pad + (c + 1) * keyW - 3, pad + (r + 1) * rowH - 3)
+                val rect = RectF(x + 2, pad + r * rowH + 2, x + key.weight * cellW - 2, pad + (r + 1) * rowH - 2)
+                x += key.weight * cellW
+                rowRects += rect
                 val selected = r == selectedRow && c == selectedCol
-                canvas.drawRoundRect(rect, 10f, 10f, if (selected) selectedPaint else keyPaint)
-                val label = when {
-                    key.length == 1 && key[0].isLetter() && (capsLockEnabled xor shiftEnabled) -> key.uppercase()
-                    else -> key
+                val paint = when {
+                    selected -> selectedPaint
+                    key.isAction -> actionPaint
+                    else -> keyPaint
                 }
-                keyTextPaint.textSize = if (label.length > 2) 26f else minOf(48f, rowH * 0.55f)
+                canvas.drawRoundRect(rect, 8f, 8f, paint)
+                val label = when {
+                    key.label.length == 1 && key.label[0].isLetter() &&
+                        (capsLockEnabled || shiftEnabled || autoCap) -> key.label.uppercase()
+                    else -> key.label
+                }
+                keyTextPaint.textSize = if (label.length > 2) 24f else minOf(40f, rowH * 0.5f)
                 canvas.drawText(label, rect.centerX(), rect.centerY() - (keyTextPaint.ascent() + keyTextPaint.descent()) / 2f, keyTextPaint)
             }
+            newRects += rowRects
         }
+        cellRects = newRects
+
+        // Bottom bar: state (left) + Done (right)
+        val barTop = height - bottomBarPx
         val state = when (layout) {
-            Layout.LETTERS -> when { capsLockEnabled -> "CAPS"; shiftEnabled -> "Shift"; else -> "abc" }
+            Layout.LETTERS -> when {
+                capsLockEnabled -> "CAPS"
+                shiftEnabled -> "Shift"
+                autoCap -> "Abc"
+                else -> "abc"
+            }
             Layout.NUMBERS -> "123"
-            Layout.SYMBOLS -> "#$%"
+            Layout.SYMBOLS -> "@#:"
         }
+        statePaint.textSize = 22f * resources.displayMetrics.density
+        val stateText = "$state \u00b7 $DISPLAY_VERSION"
+        canvas.drawText(stateText, 24f, barTop + bottomBarPx / 2 + statePaint.textSize / 3, statePaint)
+
+        val doneRect = RectF(width - 30f * resources.displayMetrics.density, barTop + 4, width - 8f, height - 4f)
+        canvas.drawRoundRect(doneRect, 8f, 8f, actionPaint)
+        donePaint.textSize = 24f * resources.displayMetrics.density
+        canvas.drawText(KEY_DONE, doneRect.centerX(), doneRect.centerY() + donePaint.textSize / 3, donePaint)
+
+        // Hint
+        tabTextPaint.textSize = 20f * resources.displayMetrics.density
         canvas.drawText(
-            "$state  \u00B7  D-pad move \u00B7 A type \u00B7 B hide \u00B7 X del \u00B7 Y shift \u00B7 LB/RB layout",
-            width / 2f, height - 6f, hintPaint,
+            "\u00B7 A close \u00B7 B type \u00B7 X \u232B \u00B7 Y shift \u00B7 LB/RB tabs \u00B7 Start \u21B5",
+            doneRect.left - 24f, barTop + bottomBarPx / 2 + tabTextPaint.textSize / 3, tabTextPaint,
         )
     }
 }
