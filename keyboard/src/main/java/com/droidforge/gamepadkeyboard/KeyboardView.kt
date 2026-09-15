@@ -78,7 +78,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.2.2"
+        const val DISPLAY_VERSION = "v0.2.3"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -201,7 +201,9 @@ class KeyboardView(context: Context) : View(context) {
     private var repeatRunnable: Runnable? = null
     private var repeatDirection: Pair<Int, Int>? = null
 
-    // Press feedback: briefly highlights the key that was just pressed (both input paths)
+    // Press feedback: key under the finger (live) + brief pulse on activation
+    private var pressedRow = -1
+    private var pressedCol = -1
     private var flashRow = -1
     private var flashCol = -1
     private var flashRunnable: Runnable? = null
@@ -471,31 +473,72 @@ class KeyboardView(context: Context) : View(context) {
     private var stripRects: List<RectF> = emptyList()
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action != MotionEvent.ACTION_UP) return true
-        for ((i, rect) in stripRects.withIndex()) {
-            if (rect.contains(event.x, event.y)) {
-                suggestions.getOrNull(i)?.let {
-                    highlightVisible = false
-                    flashSuggestion(i)
-                    listener?.onSuggestionPick(it)
-                    performClick()
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                // Live pressed state: the key under the finger is drawn depressed.
+                // Sliding across keys moves the depression; nothing commits on slide.
+                val hit = hitStrip(event.x, event.y)
+                if (hit >= 0) {
+                    if (pressedRow != -2 || pressedCol != hit) {
+                        pressedRow = -2; pressedCol = hit
+                        invalidate()
+                    }
+                } else {
+                    val (r, c) = hitCell(event.x, event.y)
+                    if (r != pressedRow || c != pressedCol) {
+                        pressedRow = r; pressedCol = c
+                        invalidate()
+                    }
                 }
-                return true
             }
-        }
-        for ((r, row) in cellRects.withIndex()) {
-            for ((c, rect) in row.withIndex()) {
-                if (rect.contains(event.x, event.y)) {
+            MotionEvent.ACTION_UP -> {
+                val stripHit = hitStrip(event.x, event.y)
+                pressedRow = -1; pressedCol = -1
+                if (stripHit >= 0) {
+                    suggestions.getOrNull(stripHit)?.let {
+                        highlightVisible = false
+                        flashSuggestion(stripHit)
+                        listener?.onSuggestionPick(it)
+                        performClick()
+                    }
+                    invalidate()
+                    return true
+                }
+                val (r, c) = hitCell(event.x, event.y)
+                if (r >= 0) {
                     // Tap = direct press. Selection/highlight stays a gamepad-only cursor.
                     highlightVisible = false
                     flashCell(r, c)
                     pressKey(grid()[r][c].label)
                     performClick()
-                    return true
                 }
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                pressedRow = -1; pressedCol = -1
+                invalidate()
             }
         }
         return true
+    }
+
+    /** Cell under (x, y): (row, col), or (-1, -1) when nothing is hit. */
+    private fun hitCell(x: Float, y: Float): Pair<Int, Int> {
+        for ((r, row) in cellRects.withIndex()) {
+            for ((c, rect) in row.withIndex()) {
+                if (rect.contains(x, y)) return r to c
+            }
+        }
+        return -1 to -1
+    }
+
+    /** Suggestion-strip slot under (x, y), or -1. */
+    private fun hitStrip(x: Float, y: Float): Int {
+        for ((i, rect) in stripRects.withIndex()) {
+            if (rect.contains(x, y)) return i
+        }
+        return -1
     }
 
     override fun performClick(): Boolean { super.performClick(); return true }
@@ -538,8 +581,9 @@ class KeyboardView(context: Context) : View(context) {
                 canvas.drawRoundRect(rect, radius, radius, keyPaint)
                 val isSel = highlightVisible && selectedRow == -1 && selectedCol == i
                 val isFlash = flashRow == -2 && flashSug == i
-                if (isFlash) {
-                    keyPaint.shader = null; keyPaint.color = skin.flash
+                val isPressedStrip = pressedRow == -2 && pressedCol == i
+                if (isFlash || isPressedStrip) {
+                    keyPaint.shader = null; keyPaint.color = if (isPressedStrip) skin.selectFill else skin.flash
                     canvas.drawRoundRect(rect, radius, radius, keyPaint)
                 } else if (isSel) {
                     keyPaint.shader = null; keyPaint.color = skin.selectFill
@@ -569,18 +613,40 @@ class KeyboardView(context: Context) : View(context) {
                 x += key.weight * cellW
                 rowRects += rect
 
+                val isPressed = r == pressedRow && c == pressedCol
                 val isFlash = r == flashRow && c == flashCol
                 val selected = highlightVisible && r == selectedRow && c == selectedCol
 
                 when {
-                    isFlash -> { keyPaint.shader = null; keyPaint.color = skin.flash }
-                    else -> keyPaint.shader = keyShader(
-                        if (key.isAction) actionColor(true) else skin.capTop,
-                        if (key.isAction) actionColor(false) else skin.capBottom,
-                        rowTop, rowTop + rowH,
-                    )
+                    // Depressed keycap: darker inverted bevel, nudged down 1dp
+                    isPressed || isFlash -> {
+                        keyPaint.shader = keyShader(
+                            if (key.isAction) actionColor(false) else skin.capBottom,
+                            if (key.isAction) actionColor(true) else skin.capTop,
+                            rowTop, rowTop + rowH,
+                        )
+                        canvas.save()
+                        canvas.translate(0f, 1.5f)
+                        canvas.drawRoundRect(rect, radius, radius, keyPaint)
+                        canvas.restore()
+                        if (isFlash) {
+                            keyPaint.shader = null
+                            keyPaint.color = skin.flash
+                            canvas.save()
+                            canvas.translate(0f, 1.5f)
+                            canvas.drawRoundRect(rect, radius, radius, keyPaint)
+                            canvas.restore()
+                        }
+                    }
+                    else -> {
+                        keyPaint.shader = keyShader(
+                            if (key.isAction) actionColor(true) else skin.capTop,
+                            if (key.isAction) actionColor(false) else skin.capBottom,
+                            rowTop, rowTop + rowH,
+                        )
+                        canvas.drawRoundRect(rect, radius, radius, keyPaint)
+                    }
                 }
-                canvas.drawRoundRect(rect, radius, radius, keyPaint)
                 if (selected) {
                     keyPaint.shader = null
                     keyPaint.color = skin.selectFill

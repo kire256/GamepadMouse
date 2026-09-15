@@ -11,8 +11,8 @@ android {
         applicationId = "com.droidforge.gamepadkeyboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.2.2-word-learning"
+        versionCode = 16
+        versionName = "0.2.3-pressed-state"
     }
 
     buildTypes {
