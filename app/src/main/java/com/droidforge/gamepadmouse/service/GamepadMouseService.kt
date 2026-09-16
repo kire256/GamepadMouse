@@ -53,6 +53,9 @@ class GamepadMouseService : AccessibilityService() {
     companion object {
         private const val TAG = "GamepadMouse"
 
+        /** Min ms between chord toggles (blocks double-delivered Start+Select). */
+        private const val CHORD_DEBOUNCE_MS = 400L
+
         private val _running = MutableStateFlow(false)
         val running: StateFlow<Boolean> = _running.asStateFlow()
 
@@ -632,6 +635,9 @@ class GamepadMouseService : AccessibilityService() {
     }
     private val heldChordButtons = HashSet<Int>()
 
+    /** Last instant-chord fire (debounce against double-delivered chords). */
+    private var lastChordFireAt = 0L
+
     override fun onKeyEvent(event: KeyEvent): Boolean = handleGamepadKeyEvent(event)
 
     private fun onCapturedKeyEvent(event: KeyEvent): Boolean = handleGamepadKeyEvent(event)
@@ -689,20 +695,35 @@ class GamepadMouseService : AccessibilityService() {
         // Manual chord detection with hold duration support
         val s = settings
         val isChordButton = code in s.toggleChord
-        
+
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
                 if (isChordButton && event.repeatCount == 0) {
                     heldChordButtons.add(code)
-                    
+
                     // Check if full chord is now held
                     if (heldChordButtons.containsAll(s.toggleChord)) {
+                        // Debounce: some controllers/drivers deliver Start+Select twice
+                        // (~40ms apart) on one physical press; a second toggle within
+                        // the window would bounce GAMEPAD→MOUSE→GAMEPAD and strand
+                        // the user. Ignore re-fires and clear held state so a stale
+                        // release can't re-arm the chord either.
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - lastChordFireAt < CHORD_DEBOUNCE_MS) {
+                            heldChordButtons.clear()
+                            chordHoldJob?.cancel()
+                            chordHoldJob = null
+                            return true
+                        }
+                        lastChordFireAt = now
                         if (s.chordHoldDurationMs <= 0L) {
-                            // Instant toggle
+                            // Instant toggle — nothing needs tracking afterwards
+                            heldChordButtons.clear()
                             toggleMode()
                             return true
                         } else {
-                            // Start hold timer
+                            // Hold timer: keep heldChordButtons so the timer can
+                            // verify the chord is still physically held
                             chordHoldJob?.cancel()
                             chordHoldJob = scope.launch {
                                 kotlinx.coroutines.delay(s.chordHoldDurationMs)
