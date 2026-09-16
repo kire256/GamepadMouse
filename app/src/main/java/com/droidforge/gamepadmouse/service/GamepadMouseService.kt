@@ -317,6 +317,65 @@ class GamepadMouseService : AccessibilityService() {
      * the currently focused editable node — the IME (ours, since it's default)
      * then rises on its own. No-ops gracefully when no editable field is focused.
      */
+    /**
+     * Snap-to-nearest: find the closest clickable node to the cursor and glide
+     * the pointer to its center (160ms decelerating stroke). Distance is measured
+     * center-to-center; clickable-flag OR click action both qualify.
+     */
+    private fun snapToNearestControl() {
+        val ov = overlay ?: return
+        val root = rootInActiveWindow ?: run {
+            Log.i(TAG, "snap -> no active window root")
+            return
+        }
+        val cx = ov.cursorX
+        val cy = ov.cursorY
+        var best: android.graphics.Rect? = null
+        var bestDist = Float.MAX_VALUE
+
+        val q = ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
+        q.add(root)
+        var visited = 0
+        while (q.isNotEmpty() && visited < 600) {
+            val n = q.removeFirst()
+            visited++
+            val r = android.graphics.Rect()
+            n.getBoundsInScreen(r)
+            if (!r.isEmpty && r.intersects(0, 0, ov.width, ov.height)) {
+                val clickable = n.isClickable || n.actionList.any {
+                    it.id == android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK
+                }
+                if (clickable) {
+                    val dx = cx - r.exactCenterX()
+                    val dy = cy - r.exactCenterY()
+                    val d = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                    if (d < bestDist) { bestDist = d; best = r }
+                }
+                for (i in 0 until n.childCount) n.getChild(i)?.let { q.add(it) }
+            }
+        }
+
+        val target = best ?: run {
+            Log.i(TAG, "snap -> no clickable found")
+            return
+        }
+        val tx = target.exactCenterX().coerceIn(0f, ov.width.toFloat())
+        val ty = target.exactCenterY().coerceIn(0f, ov.height.toFloat())
+        // Fast decelerating glide: long quick stroke, then a short settle
+        val path = android.graphics.Path().apply {
+            moveTo(ov.cursorX, ov.cursorY)
+            quadTo(
+                ov.cursorX + (tx - ov.cursorX) * 0.85f,
+                ov.cursorY + (ty - ov.cursorY) * 0.85f,
+                tx, ty
+            )
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 160)
+        dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        ov.setCursor(tx, ty)
+        audioManager.play(AudioCue.TAP)
+    }
+
     private fun toggleKeyboard() {
         if (imeOverlayUp) {
             // BACK is the universal dismiss-keyboard gesture; imeOverlayUp guarantees
@@ -842,6 +901,7 @@ class GamepadMouseService : AccessibilityService() {
             MouseAction.SLOW, MouseAction.FAST -> { heldModifiers.add(action); scheduleFrame() }
             MouseAction.TOGGLE_MODE -> toggleMode()
             MouseAction.TOGGLE_KEYBOARD -> toggleKeyboard()
+            MouseAction.SNAP_TARGET -> snapToNearestControl()
             MouseAction.SCREENSHOT -> takeScreenshot()
             MouseAction.NOTIFICATIONS -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
             MouseAction.QUICK_SETTINGS -> performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)

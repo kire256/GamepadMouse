@@ -14,6 +14,7 @@ enum class MouseAction(val label: String) {
     FAST("Fast cursor (hold)"),
     TOGGLE_MODE("Toggle mouse mode"),
     TOGGLE_KEYBOARD("Toggle keyboard"),
+    SNAP_TARGET("Snap to nearest control"),
     // System actions
     SCREENSHOT("Screenshot"),
     NOTIFICATIONS("Notifications shade"),
@@ -41,6 +42,7 @@ object DefaultBindings {
         KeyEvent.KEYCODE_BUTTON_L1 to MouseAction.SLOW,
         KeyEvent.KEYCODE_BUTTON_R1 to MouseAction.FAST,
         KeyEvent.KEYCODE_BUTTON_THUMBL to MouseAction.HOME,
+        KeyEvent.KEYCODE_BUTTON_THUMBR to MouseAction.SNAP_TARGET,
     )
 
     val detailed: List<ButtonBinding> = buttons.map { (keyCode, action) ->

@@ -60,6 +60,7 @@ fun getActionIcon(action: MouseAction): ImageVector = when (action) {
     MouseAction.FAST -> Icons.Filled.Speed
     MouseAction.TOGGLE_MODE -> Icons.Filled.Settings
     MouseAction.TOGGLE_KEYBOARD -> Icons.Filled.TouchApp
+    MouseAction.SNAP_TARGET -> Icons.Filled.Check
     MouseAction.SCREENSHOT -> Icons.Filled.Photo
     MouseAction.NOTIFICATIONS -> Icons.Filled.Notifications
     MouseAction.QUICK_SETTINGS -> Icons.Filled.Settings
