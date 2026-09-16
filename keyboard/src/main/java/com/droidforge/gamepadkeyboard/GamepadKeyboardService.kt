@@ -148,6 +148,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         dismissed = false
         broadcastImeState(true)
         keyboardView?.page = KeyboardView.pageForInputType(info?.inputType ?: 0)
+        keyboardView?.arrowsVisible = prefs.arrowsVisible
         keyboardView?.shiftEnabled = false
         keyboardView?.capsLockEnabled = false
         keyboardView?.autoCap =

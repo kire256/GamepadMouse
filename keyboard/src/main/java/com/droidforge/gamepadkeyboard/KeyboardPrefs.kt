@@ -39,6 +39,11 @@ class KeyboardPrefs(context: Context) {
         get() = sp.getInt(KEY_REPEAT_RATE, 60)
         set(v) = sp.edit().putInt(KEY_REPEAT_RATE, v).apply()
 
+    /** Show the ◀ ▶ text-cursor keys on the bottom bar. */
+    var arrowsVisible: Boolean
+        get() = sp.getBoolean(KEY_ARROWS, true)
+        set(v) = sp.edit().putBoolean(KEY_ARROWS, v).apply()
+
     private companion object {
         const val KEY_SKIN = "skin"
         const val KEY_SOUND = "sound_pack"
@@ -47,5 +52,6 @@ class KeyboardPrefs(context: Context) {
         const val KEY_HEIGHT = "height_dp"
         const val KEY_REPEAT_DELAY = "repeat_delay_ms"
         const val KEY_REPEAT_RATE = "repeat_rate_ms"
+        const val KEY_ARROWS = "arrows_visible"
     }
 }

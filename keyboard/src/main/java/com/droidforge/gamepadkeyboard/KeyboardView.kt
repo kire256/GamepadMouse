@@ -81,7 +81,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.2.6"
+        const val DISPLAY_VERSION = "v0.2.7"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -230,6 +230,10 @@ class KeyboardView(context: Context) : View(context) {
     private var flashCol = -1
     private var flashRunnable: Runnable? = null
 
+    // Touch hold-to-repeat (like physical keyboards: hold ⌫ / a letter → repeats)
+    private var holdRunnable: Runnable? = null
+    private var didRepeat = false
+
     fun setDesiredHeightPx(px: Int) {
         desiredHeightPx = px
         requestLayout()
@@ -249,12 +253,24 @@ class KeyboardView(context: Context) : View(context) {
 
     // ---- grid model -----------------------------------------------------------
 
-    private fun grid(): List<List<Key>> = when (page) {
-        Page.LETTERS -> letterRows
-        Page.NUMBERS -> numberRows
-        Page.SYMBOLS -> symbolRows
-        Page.EMOJI -> emojiRows
-        Page.FN -> fnRows
+    /** Show the ◀ ▶ cursor keys on the bottom bar (user preference). */
+    var arrowsVisible = true
+        set(value) {
+            field = value
+            normalizeSelection()
+            invalidate()
+        }
+
+    private fun grid(): List<List<Key>> {
+        val base = when (page) {
+            Page.LETTERS -> letterRows
+            Page.NUMBERS -> numberRows
+            Page.SYMBOLS -> symbolRows
+            Page.EMOJI -> emojiRows
+            Page.FN -> fnRows
+        }
+        if (arrowsVisible) return base
+        return base.map { row -> row.filter { it.label != KEY_LEFT && it.label != KEY_RIGHT } }
     }
 
     private fun normalizeSelection() {
@@ -348,6 +364,35 @@ class KeyboardView(context: Context) : View(context) {
             val c = row.indexOfFirst { it.label == label }
             if (c >= 0) { flashCell(r, c); return }
         }
+    }
+
+    /** Keys that sensibly repeat when held on touch. */
+    private fun keyRepeats(label: String): Boolean =
+        label == KEY_BACKSPACE || label == "←" || label == "→" || label == "↑" || label == "↓" ||
+            (label.length == 1 && label != KEY_SPACE)
+
+    private fun cancelHold() {
+        holdRunnable?.let { removeCallbacks(it) }
+        holdRunnable = null
+        didRepeat = false
+    }
+
+    /** Schedule press-repeat for the pressed cell (no-op for non-repeating keys). */
+    private fun startHoldIfRepeatable(r: Int, c: Int) {
+        cancelHold()
+        val label = grid().getOrNull(r)?.getOrNull(c)?.label ?: return
+        if (!keyRepeats(label)) return
+        val run = object : Runnable {
+            override fun run() {
+                if (pressedRow != r || pressedCol != c) return  // finger moved away
+                pressKey(label)
+                if (hapticsEnabled) hapticTick()
+                didRepeat = true
+                postDelayed(this, REPEAT_RATE_MS)
+            }
+        }
+        holdRunnable = run
+        postDelayed(run, REPEAT_DELAY_MS)
     }
 
     private fun hapticTick() {
@@ -491,6 +536,7 @@ class KeyboardView(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         stopRepeat()
+        cancelHold()
         flashRunnable?.let { removeCallbacks(it) }
         flashRunnable = null
         super.onDetachedFromWindow()
@@ -510,12 +556,16 @@ class KeyboardView(context: Context) : View(context) {
                 if (hit >= 0) {
                     if (pressedRow != -2 || pressedCol != hit) {
                         pressedRow = -2; pressedCol = hit
+                        cancelHold()
                         invalidate()
                     }
                 } else {
                     val (r, c) = hitCell(event.x, event.y)
                     if (r != pressedRow || c != pressedCol) {
                         pressedRow = r; pressedCol = c
+                        if (event.actionMasked == MotionEvent.ACTION_DOWN && r >= 0) {
+                            startHoldIfRepeatable(r, c)
+                        } else cancelHold()
                         invalidate()
                     }
                 }
@@ -523,6 +573,7 @@ class KeyboardView(context: Context) : View(context) {
             MotionEvent.ACTION_UP -> {
                 val stripHit = hitStrip(event.x, event.y)
                 pressedRow = -1; pressedCol = -1
+                cancelHold()
                 if (stripHit >= 0) {
                     suggestions.getOrNull(stripHit)?.let {
                         highlightVisible = false
@@ -534,8 +585,9 @@ class KeyboardView(context: Context) : View(context) {
                     return true
                 }
                 val (r, c) = hitCell(event.x, event.y)
-                if (r >= 0) {
+                if (r >= 0 && !didRepeat) {
                     // Tap = direct press. Selection/highlight stays a gamepad-only cursor.
+                    // (After a hold-repeat, the lift must not fire the key once more.)
                     highlightVisible = false
                     flashCell(r, c)
                     pressKey(grid()[r][c].label)
@@ -546,6 +598,7 @@ class KeyboardView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_CANCEL -> {
                 pressedRow = -1; pressedCol = -1
+                cancelHold()
                 invalidate()
             }
         }

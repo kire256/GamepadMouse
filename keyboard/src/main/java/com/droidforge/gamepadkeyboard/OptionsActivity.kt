@@ -84,6 +84,10 @@ class OptionsActivity : Activity() {
             root.findViewWithTag<TextView>("rate_label")?.text = "Hold-repeat rate — $v ms"
         }
 
+        // ---- Layout ----
+        label("Show ◀ ▶ cursor keys", root)
+        switch(root, prefs.arrowsVisible) { prefs.arrowsVisible = it }
+
         // ---- Voice input ----
         label("Microphone (voice dictation)", root)
         root.addView(android.widget.Button(this).apply {
