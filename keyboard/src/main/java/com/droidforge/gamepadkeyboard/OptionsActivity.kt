@@ -96,6 +96,9 @@ class OptionsActivity : Activity() {
         label("Show ◀ ▶ cursor keys", root)
         switch(root, prefs.arrowsVisible) { prefs.arrowsVisible = it }
 
+        label("Escalating backspace (hold to delete words)", root)
+        switch(root, prefs.escalatingBackspace) { prefs.escalatingBackspace = it }
+
         // ---- Voice input ----
         label("Microphone (voice dictation)", root)
         root.addView(android.widget.Button(this).apply {

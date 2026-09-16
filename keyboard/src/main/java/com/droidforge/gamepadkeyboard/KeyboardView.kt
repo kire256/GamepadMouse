@@ -83,7 +83,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.3.4"
+        const val DISPLAY_VERSION = "v0.3.5"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -239,6 +239,9 @@ class KeyboardView(context: Context) : View(context) {
 
     /** Haptics on/off (user preference; applied by the service). */
     var hapticsEnabled = true
+
+    /** Double-tap-Y window bookkeeping (caps lock gesture). */
+    var lastYDownAt = 0L
 
     /** True while the service is listening to speech — mic key pulses amber. */
     var micListening = false
@@ -509,9 +512,22 @@ class KeyboardView(context: Context) : View(context) {
                 } else {
                     // Case model: capsLock = sustained upper; shift = one-shot upper;
                     // autoCap = one-shot upper seeded from the field's sentence caps.
-                    val upper = capsLockEnabled || shiftEnabled || autoCap
-                    listener?.onKey(if (label.length == 1 && label[0].isLetter() && upper) label.uppercase() else label)
-                    consumeOneShotShift()
+                    val cased = capsLockEnabled || shiftEnabled || autoCap
+                    val shiftedSymbol = if (cased) shiftAlternative(label) else null
+                    when {
+                        shiftedSymbol != null -> {
+                            listener?.onKey(shiftedSymbol)
+                            consumeOneShotShift()
+                        }
+                        label.length == 1 && label[0].isLetter() && cased -> {
+                            listener?.onKey(label.uppercase())
+                            consumeOneShotShift()
+                        }
+                        else -> {
+                            listener?.onKey(label)
+                            if (cased) consumeOneShotShift()
+                        }
+                    }
                 }
             }
         }
@@ -546,7 +562,26 @@ class KeyboardView(context: Context) : View(context) {
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> { pressSelectedKey(); true }
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { listener?.onHide(); true }
             KeyEvent.KEYCODE_BUTTON_X -> { flashKeyByLabel(KEY_BACKSPACE); listener?.onBackspace(); true }
-            KeyEvent.KEYCODE_BUTTON_Y -> { flashKeyByLabel(KEY_SHIFT); shiftEnabled = !shiftEnabled; true }
+            KeyEvent.KEYCODE_BUTTON_Y -> {
+                // Double-tap Y (~350ms) = caps lock, like Gboard's double-tap shift
+                val now = android.os.SystemClock.uptimeMillis()
+                if (lastYDownAt != 0L && now - lastYDownAt < 350) {
+                    capsLockEnabled = !capsLockEnabled
+                    shiftEnabled = false
+                    autoCap = false
+                    flashKeyByLabel(KEY_CAPS)
+                    lastYDownAt = 0L
+                } else {
+                    flashKeyByLabel(KEY_SHIFT)
+                    when {
+                        capsLockEnabled -> Unit
+                        autoCap -> autoCap = false
+                        else -> shiftEnabled = !shiftEnabled
+                    }
+                    lastYDownAt = now
+                }
+                true
+            }
             KeyEvent.KEYCODE_BUTTON_L1 -> { cyclePage(-1); true }
             KeyEvent.KEYCODE_BUTTON_R1 -> { cyclePage(1); true }
             KeyEvent.KEYCODE_BUTTON_START -> { flashKeyByLabel(KEY_ENTER); listener?.onEnter(); true }
@@ -865,17 +900,32 @@ class KeyboardView(context: Context) : View(context) {
         else -> false
     }
 
-    private fun displayLabel(key: Key): String = when {
-        key.label == KEY_SPACE -> when (page) {
-            Page.LETTERS -> "abc"
-            Page.NUMBERS -> "0-9"
-            Page.SYMBOLS -> "@#:"
-            Page.EMOJI -> "\uD83D\uDE00"
-            Page.FN -> "space"
+    /** Shifted variant of a key (physical-keyboard semantics), null when none. */
+    private fun shiftAlternative(label: String): String? = when (label) {
+        "`" -> "~"; "1" -> "!"; "2" -> "@"; "3" -> "#"; "4" -> "$"; "5" -> "%"
+        "6" -> "^"; "7" -> "&"; "8" -> "*"; "9" -> "("; "0" -> ")"
+        "-" -> "_"; "=" -> "+"; "[" -> "{"; "]" -> "}"; "\\" -> "|"
+        ";" -> ":"; "'" -> "\""; "," -> "<"; "." -> ">"; "/" -> "?"
+        else -> null
+    }
+
+    private fun displayLabel(key: Key): String {
+        if (key.label == KEY_SPACE) {
+            return when (page) {
+                Page.LETTERS -> "abc"
+                Page.NUMBERS -> "0-9"
+                Page.SYMBOLS -> "@#:"
+                Page.EMOJI -> "\uD83D\uDE00"
+                Page.FN -> "space"
+            }
         }
-        editorKeyCodeFor(key.label) != null -> key.label
-        key.label.length == 1 && key.label[0].isLetter() &&
-            (capsLockEnabled || shiftEnabled || autoCap) -> key.label.uppercase()
-        else -> key.label
+        if (editorKeyCodeFor(key.label) != null) return key.label
+        shiftAlternative(key.label)?.let { alt ->
+            if (capsLockEnabled || shiftEnabled) return alt
+        }
+        if (key.label.length == 1 && key.label[0].isLetter() &&
+            (capsLockEnabled || shiftEnabled || autoCap)
+        ) return key.label.uppercase()
+        return key.label
     }
 }

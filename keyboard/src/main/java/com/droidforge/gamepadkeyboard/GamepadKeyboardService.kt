@@ -202,6 +202,11 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     /** Recency window for double-space → period (only converts a space we just typed). */
     private var lastSpaceCommitAt = 0L
 
+    // Escalating backspace bookkeeping
+    private var bsCount = 0
+    private var bsLastAt = 0L
+    private var bsEscalated = false
+
     /** Privacy state, classified per field in onStartInput. */
     private var secureField = false
     private var noLearning = false
@@ -324,12 +329,19 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
                 ?: suggester.bestCorrection(word)
         }
         if (replacement != null && word != null) {
+            // Case-preserving: TEH → THE, Teh → The, teh → the
+            val fixed = when {
+                word.length > 1 && word[1].isUpperCase() -> replacement.uppercase()
+                word[0].isUpperCase() ->
+                    replacement.replaceFirstChar { it.uppercase() } + replacement.drop(1)
+                else -> replacement
+            }
             currentInputConnection?.deleteSurroundingText(word.length, 0)
-            currentInputConnection?.commitText("$replacement ", 1)
+            currentInputConnection?.commitText("$fixed ", 1)
             learner.record(replacement, boost = 2)  // accepted correction = strong signal
             // Arm undo: next backspace restores the word as typed
             revertOriginal = word
-            revertCorrected = replacement
+            revertCorrected = fixed
             lastSpaceCommitAt = android.os.SystemClock.uptimeMillis()
         } else {
             revertOriginal = null
@@ -379,6 +391,26 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             revertOriginal = null
             revertCorrected = null
         }
+        // Escalating backspace: rapid repeat pressure switches to word-chunk deletes
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - bsLastAt > 300) { bsCount = 0; bsEscalated = false }
+        bsLastAt = now
+        if (prefs.escalatingBackspace && bsCount >= 6) {
+            if (!bsEscalated) bsEscalated = true
+            val ic = currentInputConnection
+            val before = ic?.getTextBeforeCursor(12, 0)
+            if (ic != null && !before.isNullOrEmpty()) {
+                val chunk = if (before.endsWith(" ") || !before.contains(' ')) {
+                    minOf(12, before.length)
+                } else {
+                    before.length - before.lastIndexOf(' ') - 1  // up to word start
+                }
+                if (chunk > 0) ic.deleteSurroundingText(chunk, 0)
+            }
+            audio.tap()
+            return
+        }
+        bsCount++
         // Composing pinyin? Backspace eats a composer letter before touching text
         if (keyboardView?.popPinyinChar() == true) {
             mainHandler.removeCallbacks(suggestionSync)

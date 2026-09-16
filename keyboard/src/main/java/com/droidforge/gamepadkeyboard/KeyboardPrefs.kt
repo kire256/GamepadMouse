@@ -49,6 +49,11 @@ class KeyboardPrefs(context: Context) {
         get() = sp.getString(KEY_LANG, "en") ?: "en"
         set(v) = sp.edit().putString(KEY_LANG, v).apply()
 
+    /** Escalating backspace: fast repeats switch to word-chunk deletes. */
+    var escalatingBackspace: Boolean
+        get() = sp.getBoolean(KEY_ESC_BS, true)
+        set(v) = sp.edit().putBoolean(KEY_ESC_BS, v).apply()
+
     private companion object {
         const val KEY_SKIN = "skin"
         const val KEY_SOUND = "sound_pack"
@@ -59,5 +64,6 @@ class KeyboardPrefs(context: Context) {
         const val KEY_REPEAT_RATE = "repeat_rate_ms"
         const val KEY_ARROWS = "arrows_visible"
         const val KEY_LANG = "language"
+        const val KEY_ESC_BS = "escalating_backspace"
     }
 }
