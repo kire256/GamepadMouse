@@ -152,6 +152,8 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.page = KeyboardView.pageForInputType(info?.inputType ?: 0)
         keyboardView?.arrowsVisible = prefs.arrowsVisible
         keyboardView?.language = LanguagePack.fromCode(prefs.languageCode)
+        revertOriginal = null
+        revertCorrected = null
         keyboardView?.shiftEnabled = false
         keyboardView?.capsLockEnabled = false
         keyboardView?.autoCap =
@@ -188,6 +190,10 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     // ---- suggestions ----------------------------------------------------------
+
+    /** Undo state for autocorrect: the word as typed vs what replaced it. */
+    private var revertOriginal: String? = null
+    private var revertCorrected: String? = null
 
     /** Pinyin candidates for the current buffer, or null when not composing. */
     private fun pinyinCandidates(): List<String>? {
@@ -260,7 +266,12 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             currentInputConnection?.deleteSurroundingText(word.length, 0)
             currentInputConnection?.commitText("$replacement ", 1)
             learner.record(replacement, boost = 2)  // accepted correction = strong signal
+            // Arm undo: next backspace restores the word as typed
+            revertOriginal = word
+            revertCorrected = replacement
         } else {
+            revertOriginal = null
+            revertCorrected = null
             currentInputConnection?.commitText(" ", 1)
             word?.let { learner.record(it) }
         }
@@ -280,6 +291,26 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onSpace() = finishWordAndSpace()
 
     override fun onBackspace() {
+        // Undo an autocorrection: one backspace restores the word as typed
+        val orig = revertOriginal
+        val corr = revertCorrected
+        if (orig != null && corr != null) {
+            val before = currentInputConnection?.getTextBeforeCursor(corr.length + 1, 0)
+            if (before == "$corr ") {
+                currentInputConnection?.deleteSurroundingText(corr.length + 1, 0)
+                currentInputConnection?.commitText(orig, 1)
+                learner.record(orig)  // teaches the dictionary your intended word
+                revertOriginal = null
+                revertCorrected = null
+                suggester.previousWord = orig
+                mainHandler.removeCallbacks(suggestionSync)
+                mainHandler.postDelayed(suggestionSync, 30)
+                return
+            }
+            // Cursor moved elsewhere — correction is no longer adjacent, drop undo
+            revertOriginal = null
+            revertCorrected = null
+        }
         // Composing pinyin? Backspace eats a composer letter before touching text
         if (keyboardView?.popPinyinChar() == true) {
             mainHandler.removeCallbacks(suggestionSync)
