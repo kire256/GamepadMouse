@@ -83,7 +83,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.4.0"
+        const val DISPLAY_VERSION = "v0.4.1"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -330,8 +330,8 @@ class KeyboardView(context: Context) : View(context) {
             base.map { row -> row.filter { it.label != KEY_LEFT && it.label != KEY_RIGHT } }
         if (compactMode && page == Page.LETTERS) {
             rows = rows.mapIndexed { i, row ->
-                if (i == 1) row.filter { it.label !in compactHidden }
-                else if (i == 2) row.filter { it.label !in compactHidden }
+                if (i == 1) row.filter { it.label !in compactHidden && it.label != KEY_TAB }
+                else if (i == 2) row.filter { it.label !in compactHidden && it.label != KEY_CAPS }
                 else row
             }
             // drop the right shift (last key of the bottom letter row)
@@ -491,9 +491,22 @@ class KeyboardView(context: Context) : View(context) {
 
     // ---- key dispatch ---------------------------------------------------------
 
+    /** Double-tap Shift (touch) = caps lock, matching the gamepad double-tap-Y. */
+    private var lastShiftTapAt = 0L
+
     fun pressKey(label: String) {
         when (label) {
             KEY_SHIFT -> {
+                // Touch double-tap = caps lock (Gboard parity with gamepad 2×Y)
+                val now = android.os.SystemClock.uptimeMillis()
+                if (lastShiftTapAt != 0L && now - lastShiftTapAt < 350) {
+                    capsLockEnabled = !capsLockEnabled
+                    shiftEnabled = false
+                    autoCap = false
+                    lastShiftTapAt = 0L
+                    return
+                }
+                lastShiftTapAt = now
                 when {
                     capsLockEnabled -> Unit                 // caps owns case while latched
                     autoCap -> autoCap = false              // one press clears the auto seed
