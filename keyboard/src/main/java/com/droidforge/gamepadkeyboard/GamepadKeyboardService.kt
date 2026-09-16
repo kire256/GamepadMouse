@@ -287,6 +287,16 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             return
         }
         kb.setSuggestions(suggester.stripCandidates(frag))
+        kb.learnedWords = learner.all().keys.toSet()
+    }
+
+    /** Long-press on a learned strip word: remove it from the dictionary. */
+    override fun onForgetWord(word: String) {
+        learner.forget(word)
+        keyboardView?.learnedWords = learner.all().keys.toSet()
+        mainHandler.removeCallbacks(suggestionSync)
+        mainHandler.postDelayed(suggestionSync, 30)
+        Log.i(TAG, "forgot learned word: $word")
     }
 
     /** Replace the in-flight fragment with [word] + trailing space; learn it. */

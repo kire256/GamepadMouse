@@ -38,6 +38,7 @@ class KeyboardView(context: Context) : View(context) {
         fun onEnter()
         fun onHide()
         fun onSuggestionPick(word: String)
+        fun onForgetWord(word: String)
         fun onEditorKey(keyCode: Int)
         fun onSelectAll()
         fun onCopy()
@@ -83,7 +84,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.4.2"
+        const val DISPLAY_VERSION = "v0.4.3"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -124,6 +125,12 @@ class KeyboardView(context: Context) : View(context) {
     private val dimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.LEFT }
     private val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val badgeTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+
+    /** Underline accent under learned words in the suggestion strip. */
+    private val underlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        textAlign = Paint.Align.CENTER
+    }
 
     // ---- model ----------------------------------------------------------------
 
@@ -317,6 +324,19 @@ class KeyboardView(context: Context) : View(context) {
 
     /** Keys hidden from the letters page in compact mode. */
     private val compactHidden = setOf("-", "=", "[", "]", "\\", ";", "'", ",")
+
+    /** Long-press detector for the suggestion strip (forget a learned word). */
+    private var stripLongPress = false
+
+    /** Words marked as learned this session (rendered with the learned style). */
+    var learnedWords: Set<String> = emptySet()
+        set(value) {
+            field = value.map { it.lowercase() }.toSet()
+            invalidate()
+        }
+
+    /** True when [word] should render with the learned-word style. */
+    fun isLearned(word: String): Boolean = word.lowercase() in learnedWords
 
     internal fun grid(): List<List<Key>> {
         val base = when (page) {
@@ -698,6 +718,20 @@ class KeyboardView(context: Context) : View(context) {
                     if (pressedRow != -2 || pressedCol != hit) {
                         pressedRow = -2; pressedCol = hit
                         cancelHold()
+                        // Long-press a LEARNED word → forget it (stock words ignore holds)
+                        val word = suggestions.getOrNull(hit)
+                        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+                            word != null && isLearned(word)
+                        ) {
+                            val run = Runnable {
+                                if (pressedRow != -2 || pressedCol != hit) return@Runnable
+                                stripLongPress = true
+                                if (hapticsEnabled) hapticTick()
+                                listener?.onForgetWord(word)
+                            }
+                            holdRunnable = run
+                            postDelayed(run, REPEAT_DELAY_MS)
+                        }
                         invalidate()
                     }
                 } else {
@@ -716,15 +750,20 @@ class KeyboardView(context: Context) : View(context) {
                 pressedRow = -1; pressedCol = -1
                 cancelHold()
                 if (stripHit >= 0) {
-                    suggestions.getOrNull(stripHit)?.let {
-                        highlightVisible = false
-                        flashSuggestion(stripHit)
-                        listener?.onSuggestionPick(it)
-                        performClick()
+                    // Long-press consumed the gesture (word forgotten) — no pick on lift
+                    if (!stripLongPress) {
+                        suggestions.getOrNull(stripHit)?.let {
+                            highlightVisible = false
+                            flashSuggestion(stripHit)
+                            listener?.onSuggestionPick(it)
+                            performClick()
+                        }
                     }
+                    stripLongPress = false
                     invalidate()
                     return true
                 }
+                stripLongPress = false
                 val (r, c) = hitCell(event.x, event.y)
                 if (r >= 0 && !didRepeat && !didHoldAction) {
                     // Tap = direct press. Selection/highlight stays a gamepad-only cursor.
@@ -740,6 +779,7 @@ class KeyboardView(context: Context) : View(context) {
             MotionEvent.ACTION_CANCEL -> {
                 pressedRow = -1; pressedCol = -1
                 cancelHold()
+                stripLongPress = false
                 invalidate()
             }
         }
@@ -815,6 +855,15 @@ class KeyboardView(context: Context) : View(context) {
                 }
                 legendPaint.color = skin.legend
                 legendPaint.textSize = 15f * density
+                // Learned words get an underline accent so they read differently
+                // from dictionary words (long-press one to forget it)
+                if (isLearned(word)) {
+                    underlinePaint.color = skin.badge
+                    underlinePaint.strokeWidth = 2f * density
+                    val uw = legendPaint.measureText(word)
+                    val uy = rect.bottom - 5f * density
+                    canvas.drawLine(rect.centerX() - uw / 2f, uy, rect.centerX() + uw / 2f, uy, underlinePaint)
+                }
                 canvas.drawText(
                     word, rect.centerX(),
                     rect.centerY() - (legendPaint.ascent() + legendPaint.descent()) / 2f,

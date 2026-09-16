@@ -18,6 +18,8 @@ class KeyboardViewTest {
         var spaces = 0
         var hides = 0
         val suggestions = mutableListOf<String>()
+        val picked = mutableListOf<String>()
+        val forgotten = mutableListOf<String>()
         val editorKeys = mutableListOf<Int>()
         var optionsOpened = 0
 
@@ -26,7 +28,8 @@ class KeyboardViewTest {
         override fun onBackspace() { backspaces++ }
         override fun onEnter() { enters++ }
         override fun onHide() { hides++ }
-        override fun onSuggestionPick(word: String) { suggestions.add(word) }
+        override fun onSuggestionPick(word: String) { picked.add(word) }
+        override fun onForgetWord(word: String) { forgotten.add(word) }
         override fun onEditorKey(keyCode: Int) { editorKeys.add(keyCode) }
         override fun onSelectAll() = Unit
         override fun onCopy() = Unit
@@ -118,7 +121,7 @@ class KeyboardViewTest {
         val v = viewWith(l)
         v.setSuggestions(listOf("hello", "help", "hell"))
         v.pressTopSuggestion()
-        assertEquals("hello", l.suggestions.first())
+        assertEquals("hello", l.picked.first())
     }
 
     @Test
@@ -130,7 +133,7 @@ class KeyboardViewTest {
         v.moveSelection(-1, 0) // up from row 0 → strip
         v.moveSelection(0, 1)  // highlight second candidate
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_A))
-        assertEquals("also", l.suggestions.first())
+        assertEquals("also", l.picked.first())
     }
 
     @Test
