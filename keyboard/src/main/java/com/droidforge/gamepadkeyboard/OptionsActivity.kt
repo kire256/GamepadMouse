@@ -99,6 +99,9 @@ class OptionsActivity : Activity() {
         label("Escalating backspace (hold to delete words)", root)
         switch(root, prefs.escalatingBackspace) { prefs.escalatingBackspace = it }
 
+        label("Glide typing (trace letters on the ABC page)", root)
+        switch(root, prefs.glideEnabled) { prefs.glideEnabled = it }
+
         label("Compact letters (hide -=[]\\ ;' — find them under @#:)", root)
         switch(root, prefs.compactMode) { prefs.compactMode = it }
 

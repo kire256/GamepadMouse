@@ -71,5 +71,11 @@ class KeyboardPrefs(context: Context) {
         const val KEY_LANG = "language"
         const val KEY_ESC_BS = "escalating_backspace"
         const val KEY_COMPACT = "compact_mode"
+        const val KEY_GLIDE = "glide_typing"
     }
+
+    /** Glide (Swype-style) typing on the letters page. */
+    var glideEnabled: Boolean
+        get() = sp.getBoolean(KEY_GLIDE, false)
+        set(v) = sp.edit().putBoolean(KEY_GLIDE, v).apply()
 }

@@ -38,6 +38,7 @@ class KeyboardView(context: Context) : View(context) {
         fun onEnter()
         fun onHide()
         fun onSuggestionPick(word: String)
+        fun onGlideTrace(trace: String)
         fun onForgetWord(word: String)
         fun onEditorKey(keyCode: Int)
         fun onSelectAll()
@@ -84,7 +85,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.5.6"
+        const val DISPLAY_VERSION = "v0.5.7"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -141,6 +142,13 @@ class KeyboardView(context: Context) : View(context) {
     /** White position dot for held-stick highlights. */
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
+    }
+
+    /** Glide trail stroke. */
+    private val glidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
     }
 
     // ---- model ----------------------------------------------------------------
@@ -799,9 +807,53 @@ class KeyboardView(context: Context) : View(context) {
     private var cellRects: List<List<RectF>> = emptyList()
     private var stripRects: List<RectF> = emptyList()
 
+    // ---- glide typing ----------------------------------------------------------
+    // Finger-down on a letter starts a trace; MOVE samples visited cells (deduped,
+    // min 2 letters); UP resolves via in-order subsequence match against the
+    // dictionary (extras tolerated, order enforced) into at most 3 strip candidates.
+
+    var glideEnabled = false
+
+    private var gliding = false
+    internal var glideCells = ArrayList<Int>()         // packed r*100+c, in visit order
+    private var glideLast = -1
+    private val glidePath = android.graphics.Path()
+
+    /** Letters visited in order ("hello" for q→w→e→r→t→y zig-zags over h,e,l,l,o). */
+    internal fun glideWord(): String {
+        val g = grid()
+        val sb = StringBuilder()
+        for (packed in glideCells) {
+            val r = packed / 100; val c = packed % 100
+            val row = g.getOrNull(r) ?: continue
+            val key = row.getOrNull(c) ?: continue
+            if (key.label.length == 1 && key.label[0].isLetter()) sb.append(key.label.lowercase())
+        }
+        return sb.toString()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    // Glide start: finger lands on a letter of the letters page
+                    if (glideEnabled && page == Page.LETTERS) {
+                        val (gr, gc) = hitCell(event.x, event.y)
+                        if (gr >= 0) {
+                            val lbl = grid()[gr][gc].label
+                            if (lbl.length == 1 && lbl[0].isLetter()) {
+                                gliding = true
+                                glideCells.clear()
+                                glideLast = -1
+                                glidePath.reset()
+                                glidePath.moveTo(event.x, event.y)
+                                pressedRow = -1; pressedCol = -1
+                                invalidate()
+                                return true
+                            }
+                        }
+                    }
+                }
                 // Live pressed state: the key under the finger is drawn depressed.
                 // Sliding across keys moves the depression; nothing commits on slide.
                 val hit = hitStrip(event.x, event.y)
@@ -825,6 +877,17 @@ class KeyboardView(context: Context) : View(context) {
                         }
                         invalidate()
                     }
+                } else if (gliding) {
+                    val (r, c) = hitCell(event.x, event.y)
+                    if (r >= 0) {
+                        val packed = r * 100 + c
+                        if (packed != glideLast) {
+                            glideLast = packed
+                            if (glideCells.isEmpty() || glideCells.last() != packed) glideCells.add(packed)
+                        }
+                    }
+                    glidePath.lineTo(event.x, event.y)
+                    invalidate()
                 } else {
                     val (r, c) = hitCell(event.x, event.y)
                     if (r != pressedRow || c != pressedCol) {
@@ -837,6 +900,17 @@ class KeyboardView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP -> {
+                if (gliding) {
+                    gliding = false
+                    val trace = glideWord()
+                    glidePath.reset()
+                    pressedRow = -1; pressedCol = -1
+                    if (trace.length >= 2) {
+                        listener?.onGlideTrace(trace)
+                    }
+                    invalidate()
+                    return true
+                }
                 val stripHit = hitStrip(event.x, event.y)
                 pressedRow = -1; pressedCol = -1
                 cancelHold()
@@ -871,6 +945,8 @@ class KeyboardView(context: Context) : View(context) {
                 pressedRow = -1; pressedCol = -1
                 cancelHold()
                 stripLongPress = false
+                gliding = false
+                glidePath.reset()
                 invalidate()
             }
         }
@@ -1102,6 +1178,13 @@ class KeyboardView(context: Context) : View(context) {
                     canvas.drawCircle(px, py, 4.5f * density, dotPaint)
                 }
             }
+        }
+
+        // --- glide trail ---
+        if (gliding && !glidePath.isEmpty) {
+            glidePaint.color = skin.badge
+            glidePaint.strokeWidth = 5f * density
+            canvas.drawPath(glidePath, glidePaint)
         }
 
         // --- hint strip ---

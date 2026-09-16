@@ -237,6 +237,41 @@ class Suggester(
         return out.take(max)
     }
 
+    /** Glide (Swype-style) resolve: words containing [trace] as an IN-ORDER
+     *  subsequence (visited keys; extra letters tolerated, order enforced).
+     *  Ranked by fewest extras, then frequency rank. Learned words included. */
+    fun glideCandidates(trace: String, max: Int = 3): List<String> {
+        if (trace.length < 2) return emptyList()
+        data class Cand(val word: String, val extras: Int, val rank: Int)
+        val out = ArrayList<Cand>()
+        for ((rank, w) in words.withIndex()) {
+            if (w.length < trace.length || w.length > trace.length + 3) continue
+            var ti = 0
+            var extras = 0
+            var ok = true
+            for (ch in w) {
+                if (ti < trace.length && ch == trace[ti]) ti++
+                else { extras++; if (extras > 3) { ok = false; break } }
+            }
+            if (ok && ti == trace.length) out.add(Cand(w, extras, rank))
+        }
+        learner?.all()?.keys?.let { learnedWords ->
+            for (w in learnedWords) {
+                if (w.length < trace.length || w.length > trace.length + 3) continue
+                var ti = 0
+                var extras = 0
+                var ok = true
+                for (ch in w) {
+                    if (ti < trace.length && ch == trace[ti]) ti++
+                    else { extras++; if (extras > 3) { ok = false; break } }
+                }
+                if (ok && ti == trace.length) out.add(Cand(w, extras + 1, -1))  // slight demotion
+            }
+        }
+        out.sortWith(compareBy({ it.extras }, { it.rank }))
+        return out.take(max).map { it.word }
+    }
+
     /**
      * Candidates for the strip: the literal fragment (typed text) first, then
      * LEARNED words with that prefix (use-frequency order), then static completions.

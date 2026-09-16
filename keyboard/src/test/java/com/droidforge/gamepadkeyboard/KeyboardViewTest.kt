@@ -19,6 +19,7 @@ class KeyboardViewTest {
         var hides = 0
         val suggestions = mutableListOf<String>()
         val picked = mutableListOf<String>()
+        val glides = mutableListOf<String>()
         val forgotten = mutableListOf<String>()
         val editorKeys = mutableListOf<Int>()
         var optionsOpened = 0
@@ -29,6 +30,7 @@ class KeyboardViewTest {
         override fun onEnter() { enters++ }
         override fun onHide() { hides++ }
         override fun onSuggestionPick(word: String) { picked.add(word) }
+        override fun onGlideTrace(trace: String) { glides.add(trace) }
         override fun onForgetWord(word: String) { forgotten.add(word) }
         override fun onEditorKey(keyCode: Int) { editorKeys.add(keyCode) }
         override fun onSelectAll() = Unit
@@ -172,6 +174,25 @@ class KeyboardViewTest {
         assertEquals("F1", v.selectedKey())
         v.pressSelectedKey()
         assertEquals(KeyEvent.KEYCODE_F1, l.editorKeys.last())
+    }
+
+    @Test
+    fun `glide subsequence match resolves hello and inserts vowels`() {
+        val l = RecordingListener()
+        val v = viewWith(l)
+        v.glideEnabled = true
+        val sug = com.droidforge.gamepadkeyboard.Suggester(
+            RuntimeEnvironment.getApplication(),
+            wordProvider = { java.io.File("src/main/assets/words_en.txt").readLines()
+                .map { it.substringBefore(' ').trim().lowercase() } }
+        )
+        val cands = sug.glideCandidates("helo")  // h-e-l-o, skipped 2nd l
+        assertTrue("hello" in cands)
+        // Real trace on the letters page: h=(2,6) e=(1,3) l=(2,9) l=(2,9 dupe) o=(1,9)
+        val packed = listOf(2 * 100 + 6, 1 * 100 + 3, 2 * 100 + 9, 2 * 100 + 9, 1 * 100 + 9)
+        v.glideCells.clear()
+        v.glideCells.addAll(packed)
+        assertEquals("hello", v.glideWord())
     }
 
     @Test

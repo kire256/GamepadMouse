@@ -169,6 +169,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.page = KeyboardView.pageForInputType(info?.inputType ?: 0)
         keyboardView?.arrowsVisible = prefs.arrowsVisible
         keyboardView?.compactMode = prefs.compactMode
+        keyboardView?.glideEnabled = prefs.glideEnabled
         keyboardView?.fieldlessMode = currentInputConnection == null
         keyboardView?.language = LanguagePack.fromCode(prefs.languageCode)
         revertOriginal = null
@@ -346,6 +347,13 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         }
         kb.setSuggestions(suggester.stripCandidates(frag))
         kb.learnedWords = learner.all().keys.toSet()
+    }
+
+    override fun onGlideTrace(trace: String) {
+        val cands = suggester.glideCandidates(trace)
+        if (cands.isEmpty()) return
+        keyboardView?.setSuggestions(cands)
+        android.util.Log.d("GPKeyboard", "glide '$trace' -> $cands")
     }
 
     /** Record a prev→next pair when a word commits, then advance the context word. */
