@@ -81,7 +81,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.2.5"
+        const val DISPLAY_VERSION = "v0.2.6"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -235,10 +235,15 @@ class KeyboardView(context: Context) : View(context) {
         requestLayout()
     }
 
+    private fun stripHeightPx(): Float =
+        if (suggestions.isEmpty()) 0f else 44f * resources.displayMetrics.density
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = getDefaultSize(suggestedMinimumWidth, widthMeasureSpec)
-        val h = if (desiredHeightPx > 0) resolveSize(desiredHeightPx, heightMeasureSpec)
-        else getDefaultSize(suggestedMinimumHeight, heightMeasureSpec)
+        val h = if (desiredHeightPx > 0) {
+            // Suggestion strip ADDS height instead of stealing it from the key rows
+            resolveSize(desiredHeightPx + stripHeightPx().toInt(), heightMeasureSpec)
+        } else getDefaultSize(suggestedMinimumHeight, heightMeasureSpec)
         setMeasuredDimension(w, h)
     }
 
@@ -263,7 +268,8 @@ class KeyboardView(context: Context) : View(context) {
         val had = suggestions.isNotEmpty()
         suggestions = list
         if (list.isEmpty() && selectedRow == -1) { selectedRow = 0; selectedCol = 0 }
-        if (had != list.isNotEmpty()) invalidate()
+        if (had != list.isNotEmpty()) requestLayout()  // strip appears/disappears → re-measure
+        invalidate()
     }
 
     fun moveSelection(dRow: Int, dCol: Int) {
@@ -366,8 +372,8 @@ class KeyboardView(context: Context) : View(context) {
             KEY_PAGES -> cyclePage(1)
             KEY_EMOJI_PAGE -> page = Page.EMOJI
             KEY_FN_PAGE -> page = Page.FN
-            KEY_LEFT -> moveSelection(0, -1)
-            KEY_RIGHT -> moveSelection(0, 1)
+            KEY_LEFT -> listener?.onEditorKey(KeyEvent.KEYCODE_DPAD_LEFT)
+            KEY_RIGHT -> listener?.onEditorKey(KeyEvent.KEYCODE_DPAD_RIGHT)
             KEY_HIDE -> listener?.onHide()
             KEY_MIC -> listener?.onMicInput()
             KEY_OPTIONS -> listener?.onOpenOptions()
@@ -677,7 +683,7 @@ class KeyboardView(context: Context) : View(context) {
                         canvas.drawRoundRect(rect, radius, radius, keyPaint)
                     }
                 }
-                if (selected) {
+                if (selected || modifierActive(key)) {
                     keyPaint.shader = null
                     keyPaint.color = skin.selectFill
                     canvas.drawRoundRect(rect, radius, radius, keyPaint)
@@ -731,6 +737,13 @@ class KeyboardView(context: Context) : View(context) {
 
         // Drive the mic-listening blink
         if (micListening) postInvalidateDelayed(250)
+    }
+
+    /** Caps/Shift light up (selected style) while they latch case. */
+    private fun modifierActive(key: Key): Boolean = when (key.label) {
+        KEY_CAPS -> capsLockEnabled
+        KEY_SHIFT -> shiftEnabled || autoCap
+        else -> false
     }
 
     private fun displayLabel(key: Key): String = when {

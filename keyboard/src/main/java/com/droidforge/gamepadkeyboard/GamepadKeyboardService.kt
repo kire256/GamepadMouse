@@ -90,7 +90,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         // IME view to fill the screen otherwise.
         val dm = resources.displayMetrics
         val heightPx = minOf(
-            (prefs.heightDp * dm.density).toInt(),
+            (prefs.heightDp * dm.density).toInt() + (44 * dm.density).toInt(), // + suggestion strip
             (dm.heightPixels * 0.5f).toInt(),
         )
         view.setDesiredHeightPx(heightPx)

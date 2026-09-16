@@ -11,8 +11,8 @@ android {
         applicationId = "com.droidforge.gamepadkeyboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.2.5-numpad"
+        versionCode = 19
+        versionName = "0.2.6-layout-fixes"
     }
 
     buildTypes {
