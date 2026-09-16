@@ -83,7 +83,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.4.1"
+        const val DISPLAY_VERSION = "v0.4.2"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -944,10 +944,11 @@ class KeyboardView(context: Context) : View(context) {
         if (micListening) postInvalidateDelayed(250)
     }
 
-    /** Caps/Shift light up (selected style) while they latch case. */
+    /** Caps/Shift light up (selected style) while they latch case. Shift stays
+     *  lit while caps lock is on — it's the only visible case indicator then. */
     private fun modifierActive(key: Key): Boolean = when (key.label) {
         KEY_CAPS -> capsLockEnabled
-        KEY_SHIFT -> shiftEnabled || autoCap
+        KEY_SHIFT -> shiftEnabled || autoCap || capsLockEnabled
         else -> false
     }
 
