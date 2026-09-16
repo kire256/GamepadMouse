@@ -45,6 +45,7 @@ class KeyboardView(context: Context) : View(context) {
         fun onPaste()
         fun onMicInput()
         fun onPinyinChanged(buffer: String)
+        fun onLanguageToggle()
         fun onOpenOptions()
     }
 
@@ -82,7 +83,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.2.9"
+        const val DISPLAY_VERSION = "v0.3.0"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -270,6 +271,9 @@ class KeyboardView(context: Context) : View(context) {
     private var holdRunnable: Runnable? = null
     private var didRepeat = false
 
+    /** Space hold = language toggle (one-shot per hold, no repeat). */
+    private var didLangToggle = false
+
     fun setDesiredHeightPx(px: Int) {
         desiredHeightPx = px
         requestLayout()
@@ -411,12 +415,25 @@ class KeyboardView(context: Context) : View(context) {
         holdRunnable?.let { removeCallbacks(it) }
         holdRunnable = null
         didRepeat = false
+        didLangToggle = false
     }
 
-    /** Schedule press-repeat for the pressed cell (no-op for non-repeating keys). */
+    /** Schedule press behavior for the pressed cell:
+     *  space → language toggle after a hold; other repeatable keys → press-repeat. */
     private fun startHoldIfRepeatable(r: Int, c: Int) {
         cancelHold()
         val label = grid().getOrNull(r)?.getOrNull(c)?.label ?: return
+        if (label == KEY_SPACE) {
+            val run = Runnable {
+                if (pressedRow != r || pressedCol != c) return@Runnable
+                listener?.onLanguageToggle()
+                if (hapticsEnabled) hapticTick()
+                didLangToggle = true
+            }
+            holdRunnable = run
+            postDelayed(run, REPEAT_DELAY_MS)
+            return
+        }
         if (!keyRepeats(label)) return
         val run = object : Runnable {
             override fun run() {
@@ -632,9 +649,9 @@ class KeyboardView(context: Context) : View(context) {
                     return true
                 }
                 val (r, c) = hitCell(event.x, event.y)
-                if (r >= 0 && !didRepeat) {
+                if (r >= 0 && !didRepeat && !didLangToggle) {
                     // Tap = direct press. Selection/highlight stays a gamepad-only cursor.
-                    // (After a hold-repeat, the lift must not fire the key once more.)
+                    // (After hold-repeat or a language hold, the lift must not fire.)
                     highlightVisible = false
                     flashCell(r, c)
                     pressKey(grid()[r][c].label)

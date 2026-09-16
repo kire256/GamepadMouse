@@ -380,6 +380,17 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         mainHandler.postDelayed(suggestionSync, 30)
     }
 
+    override fun onLanguageToggle() {
+        val packs = LanguagePack.entries
+        val next = packs[(packs.indexOf(LanguagePack.fromCode(prefs.languageCode)) + 1) % packs.size]
+        prefs.languageCode = next.code
+        keyboardView?.language = next
+        keyboardView?.clearPinyinBuffer()
+        android.widget.Toast.makeText(
+            this, next.label, android.widget.Toast.LENGTH_SHORT,
+        ).show()
+    }
+
     override fun onOpenOptions() {
         val intent = android.content.Intent(this, OptionsActivity::class.java)
         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
