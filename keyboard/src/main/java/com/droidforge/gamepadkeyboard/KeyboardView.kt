@@ -34,7 +34,7 @@ class KeyboardView(context: Context) : View(context) {
     interface Listener {
         fun onKey(text: String)
         fun onSpace()
-        fun onBackspace()
+        fun onBackspace(fromHold: Boolean = false)
         fun onEnter()
         fun onHide()
         fun onSuggestionPick(word: String)
@@ -84,7 +84,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.4.3"
+        const val DISPLAY_VERSION = "v0.5.0"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -130,6 +130,12 @@ class KeyboardView(context: Context) : View(context) {
     private val underlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         textAlign = Paint.Align.CENTER
+    }
+
+    /** Dashed ring for the right-stick cursor (Steam Deck dual-cursor scheme). */
+    private val dashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(7f, 5f), 0f)
     }
 
     // ---- model ----------------------------------------------------------------
@@ -448,7 +454,7 @@ class KeyboardView(context: Context) : View(context) {
 
     private fun flashSelectedKey() = flashCell(selectedRow, selectedCol)
 
-    private fun flashKeyByLabel(label: String) {
+    fun flashKeyByLabel(label: String) {
         val g = grid()
         for ((r, row) in g.withIndex()) {
             val c = row.indexOfFirst { it.label == label }
@@ -490,7 +496,11 @@ class KeyboardView(context: Context) : View(context) {
         val run = object : Runnable {
             override fun run() {
                 if (pressedRow != r || pressedCol != c) return  // finger moved away
-                pressKey(label)
+                if (label == KEY_BACKSPACE) {
+                    listener?.onBackspace(fromHold = true)  // held ⌫ may escalate
+                } else {
+                    pressKey(label)
+                }
                 if (hapticsEnabled) hapticTick()
                 didRepeat = true
                 postDelayed(this, REPEAT_RATE_MS)
@@ -623,7 +633,9 @@ class KeyboardView(context: Context) : View(context) {
             // Erik's spec (v3): A = type, B = close (matches Android convention)
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> { pressSelectedKey(); true }
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { listener?.onHide(); true }
-            KeyEvent.KEYCODE_BUTTON_X -> { flashKeyByLabel(KEY_BACKSPACE); listener?.onBackspace(); true }
+            // X handled by the service (needs repeatCount to distinguish hold from tap)
+            KeyEvent.KEYCODE_BUTTON_L2 -> { pressSelectedKey(); true }   // type left cursor
+            KeyEvent.KEYCODE_BUTTON_R2 -> { pressRightKey(); true }      // type right cursor
             KeyEvent.KEYCODE_BUTTON_Y -> {
                 // Double-tap Y (~350ms) = caps lock, like Gboard's double-tap shift
                 val now = android.os.SystemClock.uptimeMillis()
@@ -660,12 +672,62 @@ class KeyboardView(context: Context) : View(context) {
         return keyCode in intArrayOf(
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_X,
             KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1,
+            KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_BUTTON_R2,
             KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BACK)
     }
 
     private fun cyclePage(dir: Int) {
         val order = Page.entries
         page = order[(order.indexOf(page) + dir + order.size) % order.size]
+        resetRightCursor()  // grid shape changed; park the right cursor
+    }
+
+    // ---- right cursor (Steam Deck dual-cursor scheme) -------------------------
+    // Right stick moves it; R2 types the key under it. Confined to the right
+    // half of each row; the left half belongs to the primary (A) cursor.
+
+    /** Right-cursor cell; (-1, -1) = parked (never moved yet, not drawn). */
+    private var rightRow = -1
+    private var rightCol = -1
+
+    fun moveRightSelection(dRow: Int, dCol: Int) {
+        val g = grid()
+        if (rightRow < 0 || rightRow >= g.size) {
+            // Parked → first activation: land mid-right on the home row
+            val row = g.getOrNull(minOf(2, g.lastIndex)) ?: return
+            rightRow = minOf(2, g.lastIndex)
+            rightCol = (row.size + 1) / 2
+        } else {
+            var nr = rightRow + dRow
+            var nc = rightCol + dCol
+            if (nr < 0) nr = 0
+            if (nr >= g.size) nr = g.lastIndex
+            val row = g.getOrNull(nr) ?: return
+            if (nc < 0) nc = 0
+            if (nc >= row.size) nc = row.lastIndex
+            // Keep the right cursor on the right half of its row
+            val half = row.size / 2
+            if (nc < half) return
+            rightRow = nr; rightCol = nc
+        }
+        invalidate()
+    }
+
+    /** Key label under the right cursor, or null when parked. */
+    fun selectedRightKey(): String? =
+        grid().getOrNull(rightRow)?.getOrNull(rightCol)?.label
+
+    /** Activate (type) the key under the right cursor. */
+    fun pressRightKey() {
+        val label = selectedRightKey() ?: return
+        flashCell(rightRow, rightCol)
+        pressKey(label)
+    }
+
+    /** Reset the right cursor when the page/keyboard changes shape. */
+    fun resetRightCursor() {
+        rightRow = -1; rightCol = -1
+        invalidate()
     }
 
     private fun startRepeat(dRow: Int, dCol: Int) {
@@ -931,6 +993,13 @@ class KeyboardView(context: Context) : View(context) {
                     keyPaint.color = skin.selectFill
                     canvas.drawRoundRect(rect, radius, radius, keyPaint)
                     canvas.drawRoundRect(rect, radius, radius, selectRingPaint.apply { color = skin.selectRing })
+                }
+                // Right cursor: dashed ring, no fill — visually distinct from the
+                // A-cursor so you always know which stick will type what.
+                if (r == rightRow && c == rightCol) {
+                    dashPaint.color = skin.badge
+                    dashPaint.strokeWidth = 2.5f * density
+                    canvas.drawRoundRect(rect, radius, radius, dashPaint)
                 }
 
                 // Legend

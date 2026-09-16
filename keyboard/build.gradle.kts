@@ -11,8 +11,8 @@ android {
         applicationId = "com.droidforge.gamepadkeyboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 36
-        versionName = "0.4.3-forget"
+        versionCode = 37
+        versionName = "0.5.0-dual-cursor"
     }
 
     buildTypes {

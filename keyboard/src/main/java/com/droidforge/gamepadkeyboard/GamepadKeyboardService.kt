@@ -33,6 +33,9 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
         /** Double-space → period recency window (Gboard uses ~300ms). */
         const val DOUBLE_SPACE_WINDOW_MS = 320L
+
+        /** Hold X this long (auto-repeat period included) before deletes escalate to word chunks. */
+        const val ESCALATE_AFTER_MS = 900L
     }
 
     private var keyboardView: KeyboardView? = null
@@ -66,6 +69,8 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var lastHatY = 0f
     private var lastStickX = 0f
     private var lastStickY = 0f
+    private var lastRightX = 0f
+    private var lastRightY = 0f
 
     override fun onCreate() {
         super.onCreate()
@@ -145,6 +150,15 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (sy > -0.5f && sy < 0.5f && (lastStickY <= -0.5f || lastStickY >= 0.5f)) kb.stopDirectionalRepeat()
         lastStickX = sx; lastStickY = sy
 
+        // Right stick → right cursor (Steam Deck dual-cursor scheme)
+        val rx = event.getAxisValue(MotionEvent.AXIS_Z)
+        val ry = event.getAxisValue(MotionEvent.AXIS_RZ)
+        if (rx <= -0.5f && lastRightX > -0.5f) { kb.moveRightSelection(0, -1); handled = true }
+        if (rx >= 0.5f && lastRightX < 0.5f) { kb.moveRightSelection(0, 1); handled = true }
+        if (ry <= -0.5f && lastRightY > -0.5f) { kb.moveRightSelection(-1, 0); handled = true }
+        if (ry >= 0.5f && lastRightY < 0.5f) { kb.moveRightSelection(1, 0); handled = true }
+        lastRightX = rx; lastRightY = ry
+
         return handled || super.onGenericMotionEvent(event)
     }
 
@@ -179,6 +193,16 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             Log.d(TAG, "key while hidden: ${KeyEvent.keyCodeToString(keyCode)}")
             return super.onKeyDown(keyCode, event)
         }
+        // X = backspace: the FIRST press is a tap (never escalates); Android's
+        // auto-repeat while held marks fromHold=true so escalating can kick in.
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_X) {
+            val fromHold = event?.repeatCount ?: 0 > 0
+            keyboardView?.let { kb ->
+                kb.flashKeyByLabel(KeyboardView.KEY_BACKSPACE)
+            }
+            onBackspace(fromHold)
+            return true
+        }
         // S = commit top suggestion (keyboard-page S key; only when not typing it)
         keyboardView?.let { kb ->
             if (kb.onGamepadKeyDown(keyCode)) return true
@@ -204,7 +228,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var lastSpaceCommitAt = 0L
 
     // Escalating backspace bookkeeping
-    private var bsCount = 0
+    private var bsHoldStart = 0L
     private var bsLastAt = 0L
     private var bsEscalated = false
 
@@ -424,7 +448,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onSpace() = finishWordAndSpace()
 
-    override fun onBackspace() {
+    override fun onBackspace(fromHold: Boolean) {
         // Undo an autocorrection: one backspace restores the word as typed
         val orig = revertOriginal
         val corr = revertCorrected
@@ -445,12 +469,22 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             revertOriginal = null
             revertCorrected = null
         }
-        // Escalating backspace: rapid repeat pressure switches to word-chunk deletes
+        // Escalating backspace: HOLD-only (tap or repeated taps never escalate).
+        // Android auto-repeats X while held (fromHold=true) — after the escalation
+        // delay, deletes switch to word chunks until the key is released.
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - bsLastAt > 300) { bsCount = 0; bsEscalated = false }
+        if (!fromHold) {
+            bsHoldStart = 0L
+            bsEscalated = false
+        } else {
+            if (bsHoldStart == 0L) bsHoldStart = now
+        }
         bsLastAt = now
-        if (prefs.escalatingBackspace && bsCount >= 6) {
-            if (!bsEscalated) bsEscalated = true
+        val holdLongEnough = fromHold &&
+            now - bsHoldStart >= ESCALATE_AFTER_MS &&
+            prefs.escalatingBackspace
+        if (holdLongEnough) {
+            bsEscalated = true
             val ic = currentInputConnection
             val before = ic?.getTextBeforeCursor(12, 0)
             if (ic != null && !before.isNullOrEmpty()) {
@@ -464,7 +498,6 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             audio.tap()
             return
         }
-        bsCount++
         // Composing pinyin? Backspace eats a composer letter before touching text
         if (keyboardView?.popPinyinChar() == true) {
             mainHandler.removeCallbacks(suggestionSync)

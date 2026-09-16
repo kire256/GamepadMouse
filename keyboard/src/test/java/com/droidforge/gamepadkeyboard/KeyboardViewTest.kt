@@ -25,7 +25,7 @@ class KeyboardViewTest {
 
         override fun onKey(text: String) { keys.add(text) }
         override fun onSpace() { spaces++; keys.add(" ") }
-        override fun onBackspace() { backspaces++ }
+        override fun onBackspace(fromHold: Boolean) { backspaces++ }
         override fun onEnter() { enters++ }
         override fun onHide() { hides++ }
         override fun onSuggestionPick(word: String) { picked.add(word) }
@@ -73,13 +73,20 @@ class KeyboardViewTest {
     }
 
     @Test
-    fun `B button hides and X backspaces and Start enters`() {
+    fun `B button hides L2 types left and R2 types right cursor and Start enters`() {
         val l = RecordingListener()
         val v = viewWith(l)
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_B))
         assertEquals(1, l.hides)
-        assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_X))
-        assertEquals(1, l.backspaces)
+        // X is handled by the service now (hold-aware backspace); L2 = type left cursor
+        assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_L2))
+        assertEquals(1, l.keys.size)
+        // Right cursor parked → R2 does nothing until the right stick moves it
+        assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_R2))
+        assertEquals(1, l.keys.size)
+        v.moveRightSelection(0, 1) // wake the right cursor (lands right-half home row)
+        v.pressRightKey()
+        assertEquals(2, l.keys.size)
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_START))
         assertEquals(1, l.enters)
     }
