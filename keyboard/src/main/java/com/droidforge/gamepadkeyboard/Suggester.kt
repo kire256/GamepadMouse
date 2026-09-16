@@ -19,6 +19,49 @@ class Suggester(
     /** Membership set — the list itself is frequency-ranked (NOT sorted), so no binary search. */
     private val wordSet: Set<String> = words.toHashSet()
 
+    /** True when [word] (case-insensitive) is in the dictionary. */
+    fun knows(word: String): Boolean =
+        word.isNotEmpty() && word.lowercase() in wordSet
+
+    /**
+     * Closest dictionary word to [word] within Levenshtein distance [maxDistance]
+     * (same first letter, length ±2, frequency-ranked). Null when nothing is close
+     * enough — used for autocorrect-on-space. Cheap early exits keep this fast.
+     */
+    fun bestCorrection(word: String, maxDistance: Int = 2): String? {
+        val w = word.lowercase()
+        if (w.length < 3 || w[0] !in 'a'..'z') return null
+        var best: String? = null
+        var bestRank = Int.MAX_VALUE
+        for ((rank, cand) in words.withIndex()) {
+            if (cand[0] != w[0] || cand == w) continue
+            if (kotlin.math.abs(cand.length - w.length) > maxDistance) continue
+            if (levenshtein(w, cand, maxDistance) <= maxDistance && rank < bestRank) {
+                best = cand
+                bestRank = rank
+            }
+        }
+        return best
+    }
+
+    /** Bounded Levenshtein: early-exits once the distance exceeds [cap]. */
+    private fun levenshtein(a: String, b: String, cap: Int): Int {
+        var prev = IntArray(b.length + 1) { it }
+        val curr = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            curr[0] = i
+            var rowMin = curr[0]
+            for (j in 1..b.length) {
+                val sub = prev[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1
+                curr[j] = minOf(prev[j] + 1, curr[j - 1] + 1, sub)
+                if (curr[j] < rowMin) rowMin = curr[j]
+            }
+            if (rowMin > cap) return cap + 1
+            System.arraycopy(curr, 0, prev, 0, curr.size)
+        }
+        return prev[b.length]
+    }
+
     /** Diagnostic for tests/settings: how many words loaded (0 = asset missing). */
     val wordCount: Int get() = words.size
 

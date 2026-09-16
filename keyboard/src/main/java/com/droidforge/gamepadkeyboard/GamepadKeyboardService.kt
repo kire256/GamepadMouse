@@ -235,7 +235,9 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.setSuggestions(emptyList())
     }
 
-    /** Finish the current word with a space and learn it (space = confirmation). */
+    /** Finish the current word with a space and learn it (space = confirmation).
+     *  Autocorrect: a non-dictionary word with available completions commits the
+     *  top suggestion instead (stock-keyboard behavior). */
     private fun finishWordAndSpace() {
         // Pinyin mode: space commits the top hanzi candidate (standard IME behavior)
         val composing = keyboardView?.pinyinBuffer
@@ -245,11 +247,24 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             return
         }
         val word = currentWord()  // capture BEFORE the space lands
-        currentInputConnection?.commitText(" ", 1)
-        word?.let {
-            suggester.previousWord = it
-            learner.record(it)
+        var replacement: String? = null
+        if (word != null && prefs.suggestionsEnabled &&
+            word.length >= 3 && !suggester.knows(word)
+        ) {
+            val lower = word.lowercase()
+            // 1) prefix completion of what was typed  2) nearest dictionary word
+            replacement = suggester.suggest(lower).firstOrNull { it != word }
+                ?: suggester.bestCorrection(word)
         }
+        if (replacement != null && word != null) {
+            currentInputConnection?.deleteSurroundingText(word.length, 0)
+            currentInputConnection?.commitText("$replacement ", 1)
+            learner.record(replacement, boost = 2)  // accepted correction = strong signal
+        } else {
+            currentInputConnection?.commitText(" ", 1)
+            word?.let { learner.record(it) }
+        }
+        suggester.previousWord = replacement ?: word
         mainHandler.postDelayed(suggestionSync, 40)
     }
 
@@ -278,18 +293,13 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onEnter() {
-        // Enter confirms the current word too
+        // Enter = newline, always. (performEditorAction could close the editor —
+        // e.g. IME_ACTION_DONE dismisses focus — which read as "keyboard closes".)
         currentWord()?.let {
             suggester.previousWord = it
             learner.record(it)
         }
-        val action = currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: 0
-        val ic = currentInputConnection
-        if (ic != null && action != EditorInfo.IME_ACTION_NONE) {
-            ic.performEditorAction(action)
-        } else {
-            ic?.commitText("\n", 1)
-        }
+        currentInputConnection?.commitText("\n", 1)
         audio.enter()
     }
 

@@ -82,7 +82,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.2.8"
+        const val DISPLAY_VERSION = "v0.2.9"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -248,7 +248,7 @@ class KeyboardView(context: Context) : View(context) {
     private var selectedRow = 1
     private var selectedCol = 0
     /** Highlight marks the GAMEPAD cursor; touch taps press keys but leave no highlight. */
-    private var highlightVisible = true
+    private var highlightVisible = false  // cursor appears on first gamepad move
 
     /** Current suggestion candidates (set by the service). Row -1 selects these. */
     private var suggestions: List<String> = emptyList()
@@ -444,7 +444,13 @@ class KeyboardView(context: Context) : View(context) {
 
     fun pressKey(label: String) {
         when (label) {
-            KEY_SHIFT -> shiftEnabled = !shiftEnabled
+            KEY_SHIFT -> {
+                when {
+                    capsLockEnabled -> Unit                 // caps owns case while latched
+                    autoCap -> autoCap = false              // one press clears the auto seed
+                    else -> shiftEnabled = !shiftEnabled    // manual one-shot
+                }
+            }
             KEY_CAPS -> capsLockEnabled = !capsLockEnabled
             KEY_TAB -> listener?.onKey("\t")
             KEY_BACKSPACE -> listener?.onBackspace()
