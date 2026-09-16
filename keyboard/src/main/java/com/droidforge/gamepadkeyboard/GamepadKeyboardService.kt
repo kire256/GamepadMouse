@@ -152,6 +152,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         super.onStartInputView(info, restarting)
         dismissed = false
         broadcastImeState(true)
+        classifyField(info)
         keyboardView?.page = KeyboardView.pageForInputType(info?.inputType ?: 0)
         keyboardView?.arrowsVisible = prefs.arrowsVisible
         keyboardView?.language = LanguagePack.fromCode(prefs.languageCode)
@@ -201,6 +202,29 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     /** Recency window for double-space → period (only converts a space we just typed). */
     private var lastSpaceCommitAt = 0L
 
+    /** Privacy state, classified per field in onStartInput. */
+    private var secureField = false
+    private var noLearning = false
+
+    /** Password/privacy classification for the current editor. */
+    private fun classifyField(info: android.view.inputmethod.EditorInfo?) {
+        val t = info?.inputType ?: 0
+        val cls = t and android.text.InputType.TYPE_MASK_CLASS
+        val vrn = t and android.text.InputType.TYPE_MASK_VARIATION
+        secureField =
+            (cls == android.text.InputType.TYPE_CLASS_TEXT && vrn in intArrayOf(
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            )) || (cls == android.text.InputType.TYPE_CLASS_NUMBER &&
+                vrn == android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD)
+        // Apps may also forbid personalized learning generically (IME_FLAG_NO_PERSONALIZED_LEARNING)
+        noLearning = secureField ||
+            (info?.imeOptions != null &&
+                (info.imeOptions and android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING) != 0)
+        Log.d(TAG, "field privacy: secure=$secureField noLearning=$noLearning")
+    }
+
     /** Pinyin candidates for the current buffer, or null when not composing. */
     private fun pinyinCandidates(): List<String>? {
         val buf = keyboardView?.pinyinBuffer ?: return null
@@ -228,6 +252,15 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private fun syncSuggestions() {
         val kb = keyboardView ?: return
+        // Privacy: no suggestion strip on password / no-learning fields
+        if (secureField || noLearning) {
+            kb.setSuggestions(emptyList())
+            return
+        }
+        pinyinCandidates()?.let { cands ->
+            kb.setSuggestions(cands)
+            return
+        }
         if (!prefs.suggestionsEnabled || currentWord() == null && suggester.previousWord == null) {
             kb.setSuggestions(emptyList())
             return
@@ -257,6 +290,14 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (!composing.isNullOrEmpty()) {
             val hanzi = pinyinCandidates()?.firstOrNull() ?: composing  // raw letters if no match
             commitPinyin(hanzi)
+            return
+        }
+        // Privacy fields: no autocorrect, no double-space period, no learning
+        if (noLearning) {
+            revertOriginal = null
+            revertCorrected = null
+            lastSpaceCommitAt = 0L
+            currentInputConnection?.commitText(" ", 1)
             return
         }
         // Double-space → period (Gboard-style): previous space must be recent + ours
@@ -353,9 +394,11 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onEnter() {
         // Enter = newline, always. (performEditorAction could close the editor —
         // e.g. IME_ACTION_DONE dismisses focus — which read as "keyboard closes".)
-        currentWord()?.let {
-            suggester.previousWord = it
-            learner.record(it)
+        if (!noLearning) {
+            currentWord()?.let {
+                suggester.previousWord = it
+                learner.record(it)
+            }
         }
         currentInputConnection?.commitText("\n", 1)
         audio.enter()
@@ -463,6 +506,13 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             android.content.pm.PackageManager.PERMISSION_GRANTED
 
     override fun onMicInput() {
+        // Privacy: never listen on password / no-learning fields
+        if (noLearning) {
+            android.widget.Toast.makeText(
+                this, "Voice input is off for private fields", android.widget.Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
         if (!micPermissionGranted()) {
             // IMEs can't show permission dialogs — Options requests it.
             android.widget.Toast.makeText(
