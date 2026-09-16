@@ -84,7 +84,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.5.0"
+        const val DISPLAY_VERSION = "v0.5.1"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -1052,7 +1052,10 @@ class KeyboardView(context: Context) : View(context) {
             else -> "abc"
         }
         val composing = pinyinBuffer?.takeIf { it.isNotEmpty() }
-        val stateText = if (composing != null) "[${composing}] " else ""
+        val stateText = buildString {
+            if (fieldlessMode) append("[no field \u2192 Enter copies] ")
+            if (composing != null) append("[${composing}] ")
+        }
         canvas.drawText(
             "$stateText$state \u00b7 $DISPLAY_VERSION \u00b7 A type \u00b7 B close \u00b7 X \u232b \u00b7 Y shift \u00b7 LB/RB pages \u00b7 S complete",
             10f, height - 4f * density, dimPaint,
@@ -1061,6 +1064,13 @@ class KeyboardView(context: Context) : View(context) {
         // Drive the mic-listening blink
         if (micListening) postInvalidateDelayed(250)
     }
+
+    /** Fieldless indicator: set by the service when no editor is attached. */
+    var fieldlessMode = false
+        set(value) {
+            field = value
+            invalidate()
+        }
 
     /** Caps/Shift light up (selected style) while they latch case. Shift stays
      *  lit while caps lock is on — it's the only visible case indicator then. */

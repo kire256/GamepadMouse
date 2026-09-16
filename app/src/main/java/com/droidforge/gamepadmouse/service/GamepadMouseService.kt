@@ -325,13 +325,19 @@ class GamepadMouseService : AccessibilityService() {
             Log.i(TAG, "toggleKeyboard -> hide (BACK)")
             return
         }
-        val node = findFocusedEditable() ?: run {
-            Log.i(TAG, "toggleKeyboard -> no editable focused; nothing to do")
+        if (findFocusedEditable() != null) {
+            // Normal path: re-fire focus and let the system open the IME
+            val node = findFocusedEditable()!!
+            node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+            node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+            Log.i(TAG, "toggleKeyboard -> show (refocused editable)")
             return
         }
-        node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
-        node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
-        Log.i(TAG, "toggleKeyboard -> show (refocused editable)")
+        // No editable focused (e.g. an emulator): raise the IME fieldless — the
+        // keyboard buffers what you type and Enter copies it to the clipboard.
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        runCatching { imm.toggleSoftInput(android.view.inputmethod.InputMethodManager.SHOW_FORCED, 0) }
+        Log.i(TAG, "toggleKeyboard -> fieldless show (no editable focused)")
     }
 
     /** Currently focused editable node, scanning all windows (fresh, not cached). */

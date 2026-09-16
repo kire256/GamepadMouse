@@ -163,6 +163,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        keyboardView?.fieldlessMode = false
         super.onStartInputView(info, restarting)
         dismissed = false
         broadcastImeState(true)
@@ -170,6 +171,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.page = KeyboardView.pageForInputType(info?.inputType ?: 0)
         keyboardView?.arrowsVisible = prefs.arrowsVisible
         keyboardView?.compactMode = prefs.compactMode
+        keyboardView?.fieldlessMode = currentInputConnection == null
         keyboardView?.language = LanguagePack.fromCode(prefs.languageCode)
         revertOriginal = null
         revertCorrected = null
@@ -216,6 +218,40 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             if (kb.onGamepadKeyUp(keyCode)) return true
         }
         return super.onKeyUp(keyCode, event)
+    }
+
+    // ---- fieldless mode (keyboard up with NO focused editor, e.g. emulators) ---
+    // toggleSoftInput can raise the IME without an InputConnection. Keystrokes then
+    // buffer here (shown in the strip); Enter copies the buffer to the clipboard.
+
+    private val fieldlessBuffer = StringBuilder()
+    private val fieldless: Boolean get() = currentInputConnection == null && isInputViewShown
+
+    private fun fieldlessKey(text: String) {
+        fieldlessBuffer.append(text)
+        keyboardView?.setSuggestions(listOf(fieldlessBuffer.toString()))
+        audio.tap()
+    }
+
+    private fun fieldlessBackspace() {
+        if (fieldlessBuffer.isNotEmpty()) fieldlessBuffer.deleteCharAt(fieldlessBuffer.length - 1)
+        keyboardView?.setSuggestions(
+            if (fieldlessBuffer.isEmpty()) emptyList() else listOf(fieldlessBuffer.toString())
+        )
+        audio.tap()
+    }
+
+    private fun fieldlessEnter() {
+        val text = fieldlessBuffer.toString()
+        if (text.isEmpty()) return
+        val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("typed", text))
+        android.widget.Toast.makeText(
+            this, "Copied: $text", android.widget.Toast.LENGTH_SHORT
+        ).show()
+        fieldlessBuffer.clear()
+        keyboardView?.setSuggestions(emptyList())
+        audio.enter()
     }
 
     // ---- suggestions ----------------------------------------------------------
@@ -406,6 +442,11 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     // ---- KeyboardView.Listener ------------------------------------------------
 
     override fun onKey(text: String) {
+        if (fieldless) {
+            // Route text into the fieldless buffer; Enter copies it to the clipboard
+            text.forEach { fieldlessKey(it.toString()) }
+            return
+        }
         val ic = currentInputConnection
         // Smart punctuation: -- → —, (c) → ©, (r) → ®, (tm) → ™
         if (ic != null) {
@@ -446,9 +487,20 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         mainHandler.postDelayed(suggestionSync, 40)
     }
 
-    override fun onSpace() = finishWordAndSpace()
+    override fun onSpace() {
+        if (fieldless) {
+            fieldlessKey(" ")
+            return
+        }
+        finishWordAndSpace()
+    }
 
     override fun onBackspace(fromHold: Boolean) {
+        // Fieldless mode: backspace edits the buffer (no escalation — nothing to chew)
+        if (fieldless) {
+            fieldlessBackspace()
+            return
+        }
         // Undo an autocorrection: one backspace restores the word as typed
         val orig = revertOriginal
         val corr = revertCorrected
@@ -511,6 +563,12 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onEnter() {
+        // Fieldless (no focused editor): Enter copies the buffered text to the
+        // clipboard so it can be pasted into any app afterwards.
+        if (fieldless) {
+            fieldlessEnter()
+            return
+        }
         // Enter = newline, always. (performEditorAction could close the editor —
         // e.g. IME_ACTION_DONE dismisses focus — which read as "keyboard closes".)
         if (!noLearning) {
