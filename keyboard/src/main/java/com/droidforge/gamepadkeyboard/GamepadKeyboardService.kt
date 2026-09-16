@@ -37,6 +37,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     private lateinit var suggester: Suggester
     private lateinit var learner: WordLearner
     private lateinit var audio: KeyboardAudio
+    private lateinit var pinyin: PinyinEngine
     private var lastAxisDump = ""
 
     // ---- voice input ----
@@ -68,6 +69,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         prefs = KeyboardPrefs(this)
         learner = WordLearner(this)
         suggester = Suggester(this, learner = learner)
+        pinyin = PinyinEngine(this)
         audio = KeyboardAudio(this)
         audio.setPack(runCatching { SoundPack.valueOf(prefs.soundPackName) }.getOrDefault(SoundPack.CLASSIC))
     }
@@ -149,6 +151,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         broadcastImeState(true)
         keyboardView?.page = KeyboardView.pageForInputType(info?.inputType ?: 0)
         keyboardView?.arrowsVisible = prefs.arrowsVisible
+        keyboardView?.language = LanguagePack.fromCode(prefs.languageCode)
         keyboardView?.shiftEnabled = false
         keyboardView?.capsLockEnabled = false
         keyboardView?.autoCap =
@@ -186,6 +189,19 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     // ---- suggestions ----------------------------------------------------------
 
+    /** Pinyin candidates for the current buffer, or null when not composing. */
+    private fun pinyinCandidates(): List<String>? {
+        val buf = keyboardView?.pinyinBuffer ?: return null
+        if (buf.isEmpty()) return null
+        return pinyin.candidates(buf)
+    }
+
+    /** Commit hanzi for the given pinyin buffer and clear composing state. */
+    private fun commitPinyin(hanzi: String) {
+        currentInputConnection?.commitText(hanzi, 1)
+        keyboardView?.clearPinyinBuffer()
+    }
+
     private fun currentWord(): String? {
         val ic = currentInputConnection ?: return null
         val before = ic.getTextBeforeCursor(48, 0) ?: return null
@@ -221,6 +237,13 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     /** Finish the current word with a space and learn it (space = confirmation). */
     private fun finishWordAndSpace() {
+        // Pinyin mode: space commits the top hanzi candidate (standard IME behavior)
+        val composing = keyboardView?.pinyinBuffer
+        if (!composing.isNullOrEmpty()) {
+            val hanzi = pinyinCandidates()?.firstOrNull() ?: composing  // raw letters if no match
+            commitPinyin(hanzi)
+            return
+        }
         val word = currentWord()  // capture BEFORE the space lands
         currentInputConnection?.commitText(" ", 1)
         word?.let {
@@ -242,6 +265,12 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     override fun onSpace() = finishWordAndSpace()
 
     override fun onBackspace() {
+        // Composing pinyin? Backspace eats a composer letter before touching text
+        if (keyboardView?.popPinyinChar() == true) {
+            mainHandler.removeCallbacks(suggestionSync)
+            mainHandler.postDelayed(suggestionSync, 30)
+            return
+        }
         currentInputConnection?.deleteSurroundingText(1, 0)
         audio.tap()
         mainHandler.removeCallbacks(suggestionSync)
@@ -271,7 +300,14 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         requestHideSelf(0)
     }
 
-    override fun onSuggestionPick(word: String) = commitSuggestion(word)
+    override fun onSuggestionPick(word: String) {
+        // In pinyin mode a strip pick is hanzi for the composed buffer
+        if (keyboardView?.pinyinBuffer?.isNotEmpty() == true) {
+            commitPinyin(word)
+        } else {
+            commitSuggestion(word)
+        }
+    }
 
     override fun onEditorKey(keyCode: Int) {
         val ic = currentInputConnection ?: return
@@ -327,6 +363,11 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             currentInputConnection?.commitText(clip, 1)
             audio.enter()
         }
+    }
+
+    override fun onPinyinChanged(buffer: String) {
+        mainHandler.removeCallbacks(suggestionSync)
+        mainHandler.postDelayed(suggestionSync, 30)
     }
 
     override fun onOpenOptions() {

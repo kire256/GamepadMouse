@@ -85,6 +85,14 @@ class OptionsActivity : Activity() {
         }
 
         // ---- Layout ----
+        label("Language", root)
+        val langSpinner = spinner(root, LanguagePack.entries.map { it.label }) {
+            prefs.languageCode = LanguagePack.entries[it].code
+            toast("${LanguagePack.entries[it].label} — reopens with the keyboard")
+        }
+        langSpinner.setSelection(
+            LanguagePack.entries.indexOfFirst { it.code == prefs.languageCode }.coerceAtLeast(0))
+
         label("Show ◀ ▶ cursor keys", root)
         switch(root, prefs.arrowsVisible) { prefs.arrowsVisible = it }
 

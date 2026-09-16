@@ -44,6 +44,11 @@ class KeyboardPrefs(context: Context) {
         get() = sp.getBoolean(KEY_ARROWS, true)
         set(v) = sp.edit().putBoolean(KEY_ARROWS, v).apply()
 
+    /** Active language pack code (en/es/fr/de/zh). */
+    var languageCode: String
+        get() = sp.getString(KEY_LANG, "en") ?: "en"
+        set(v) = sp.edit().putString(KEY_LANG, v).apply()
+
     private companion object {
         const val KEY_SKIN = "skin"
         const val KEY_SOUND = "sound_pack"
@@ -53,5 +58,6 @@ class KeyboardPrefs(context: Context) {
         const val KEY_REPEAT_DELAY = "repeat_delay_ms"
         const val KEY_REPEAT_RATE = "repeat_rate_ms"
         const val KEY_ARROWS = "arrows_visible"
+        const val KEY_LANG = "language"
     }
 }

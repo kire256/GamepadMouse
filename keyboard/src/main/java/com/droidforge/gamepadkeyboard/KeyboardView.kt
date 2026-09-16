@@ -44,6 +44,7 @@ class KeyboardView(context: Context) : View(context) {
         fun onCut()
         fun onPaste()
         fun onMicInput()
+        fun onPinyinChanged(buffer: String)
         fun onOpenOptions()
     }
 
@@ -81,7 +82,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.2.7"
+        const val DISPLAY_VERSION = "v0.2.8"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -150,13 +151,48 @@ class KeyboardView(context: Context) : View(context) {
         Key(KEY_OPTIONS, 1.1f, true),
     )
 
-    internal val letterRows = listOf(
+    internal var letterRows: List<List<Key>> = buildLetterRows(LanguagePack.EN)
+
+    /** Build the letters grid for a language pack (QWERTY/AZERTY/QWERTZ + ñ). */
+    private fun buildLetterRows(pack: LanguagePack): List<List<Key>> = listOf(
         listOf(Key("`"),Key("1"),Key("2"),Key("3"),Key("4"),Key("5"),Key("6"),Key("7"),Key("8"),Key("9"),Key("0"),Key("-"),Key("="), backspaceKey()),
-        listOf(Key(KEY_TAB,1.6f,true),Key("q"),Key("w"),Key("e"),Key("r"),Key("t"),Key("y"),Key("u"),Key("i"),Key("o"),Key("p"),Key("["),Key("]"),Key("\\")),
-        listOf(Key(KEY_CAPS,1.7f,true),Key("a"),Key("s"),Key("d"),Key("f"),Key("g"),Key("h"),Key("j"),Key("k"),Key("l"),Key(";"),Key("'"), enterKey()),
-        listOf(shiftKey(),Key("z"),Key("x"),Key("c"),Key("v"),Key("b"),Key("n"),Key("m"),Key(","),Key("."),Key("/"), shiftKey()),
+        listOf(Key(KEY_TAB,1.6f,true)) + pack.topRow.map { Key(it) } + listOf(Key("["),Key("]"),Key("\\")),
+        listOf(Key(KEY_CAPS,1.7f,true)) + pack.homeRow.map { Key(it) } + listOf(Key(";"),Key("'"), enterKey()),
+        listOf(shiftKey()) + pack.bottomRow.map { Key(it) } + listOf(Key(","),Key("."),Key("/"), shiftKey()),
         barRow(),
     )
+
+    /** Active language pack; rebuilding the letter grid when it changes. */
+    var language: LanguagePack = LanguagePack.EN
+        set(value) {
+            if (field == value) return
+            field = value
+            pinyinBuffer = if (value.pinyin) "" else null
+            letterRows = buildLetterRows(value)
+            normalizeSelection()
+            invalidate()
+        }
+
+    /** Pinyin composing buffer: null when inactive, otherwise the letters typed. */
+    var pinyinBuffer: String? = null
+        private set
+
+    fun clearPinyinBuffer() {
+        if (pinyinBuffer != null) {
+            pinyinBuffer = ""
+            invalidate()
+        }
+    }
+
+    fun popPinyinChar(): Boolean {
+        val buf = pinyinBuffer ?: return false
+        if (buf.isNotEmpty()) {
+            pinyinBuffer = buf.dropLast(1)
+            invalidate()
+            return true
+        }
+        return false
+    }
 
     /** Dedicated numeric pad: calculator-style 789 top, big digits, math + separators.
      *  Auto-selected when a field's inputType is number/phone/datetime. */
@@ -442,6 +478,11 @@ class KeyboardView(context: Context) : View(context) {
                 val editorCode = editorKeyCodeFor(label)
                 if (editorCode != null) {
                     listener?.onEditorKey(editorCode)
+                } else if (pinyinBuffer != null && label.length == 1 && label[0].isLetter()) {
+                    // Pinyin mode: letters compose; hanzi commits via the strip/space
+                    pinyinBuffer = pinyinBuffer!! + label.lowercase()
+                    listener?.onPinyinChanged(pinyinBuffer!!)
+                    invalidate()
                 } else {
                     // Case model: capsLock = sustained upper; shift = one-shot upper;
                     // autoCap = one-shot upper seeded from the field's sentence caps.
@@ -783,8 +824,10 @@ class KeyboardView(context: Context) : View(context) {
             autoCap -> "Abc"
             else -> "abc"
         }
+        val composing = pinyinBuffer?.takeIf { it.isNotEmpty() }
+        val stateText = if (composing != null) "[${composing}] " else ""
         canvas.drawText(
-            "$state \u00b7 $DISPLAY_VERSION \u00b7 A type \u00b7 B close \u00b7 X \u232b \u00b7 Y shift \u00b7 LB/RB pages \u00b7 S complete",
+            "$stateText$state \u00b7 $DISPLAY_VERSION \u00b7 A type \u00b7 B close \u00b7 X \u232b \u00b7 Y shift \u00b7 LB/RB pages \u00b7 S complete",
             10f, height - 4f * density, dimPaint,
         )
 

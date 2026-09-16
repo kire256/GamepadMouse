@@ -33,6 +33,7 @@ class KeyboardViewTest {
         override fun onCut() = Unit
         override fun onPaste() = Unit
         override fun onMicInput() = Unit
+        override fun onPinyinChanged(buffer: String) = Unit
         override fun onOpenOptions() { optionsOpened++ }
     }
 
