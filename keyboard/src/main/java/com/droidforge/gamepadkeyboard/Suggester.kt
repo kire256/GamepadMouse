@@ -154,14 +154,97 @@ class Suggester(
             .distinct().take(max)
     }
 
+    // ---- next-word prediction -------------------------------------------------
+    // On-device pair learning: every committed word records prev→next with a
+    // weight; static seeds cover common bigrams so prediction works from day one.
+
+    private val pairWeights = LinkedHashMap<String, Int>()
+
+    /** Static seed: common English bigrams (boot-time predictions, no history needed). */
+    private val seedPairs = mapOf(
+        "the" to listOf("same", "way", "most", "other"),
+        "of" to listOf("the", "course"),
+        "and" to listOf("the", "then"),
+        "to" to listOf("the", "be", "do"),
+        "in" to listOf("the", "fact"),
+        "is" to listOf("the", "not", "a"),
+        "that" to listOf("the", "is"),
+        "you" to listOf("can", "are", "know", "should"),
+        "it" to listOf("is", "was", "will"),
+        "for" to listOf("the", "a"),
+        "with" to listOf("the", "me", "you"),
+        "this" to listOf("is", "was"),
+        "but" to listOf("the", "i"),
+        "not" to listOf("the", "only", "to"),
+        "on" to listOf("the", "top"),
+        "as" to listOf("the", "well"),
+        "are" to listOf("the", "you", "not"),
+        "we" to listOf("are", "can", "will", "have"),
+        "can" to listOf("be", "get", "do", "you"),
+        "will" to listOf("be", "not", "have"),
+        "have" to listOf("to", "been", "a"),
+        "has" to listOf("been", "to"),
+        "was" to listOf("the", "not", "a"),
+        "would" to listOf("be", "like", "have"),
+        "could" to listOf("be", "have", "get"),
+        "should" to listOf("be", "have"),
+        "do" to listOf("you", "not", "it"),
+        "does" to listOf("not", "it"),
+        "if" to listOf("you", "the", "it"),
+        "no" to listOf("one", "longer", "matter"),
+        "good" to listOf("idea", "luck", "morning"),
+        "how" to listOf("are", "do", "much", "about"),
+        "all" to listOf("the", "of"),
+        "there" to listOf("is", "are", "was"),
+        "when" to listOf("you", "the", "it"),
+        "what" to listOf("is", "do", "about"),
+        "one" to listOf("of", "day"),
+        "my" to listOf("own", "life"),
+        "your" to listOf("own", "name"),
+        "new" to listOf("one", "york"),
+        "at" to listOf("the", "least", "all"),
+        "from" to listOf("the", "me"),
+        "they" to listOf("are", "will", "have"),
+        "i" to listOf("don't", "am", "was", "will", "think", "can")
+    )
+
+    /** Record that [next] followed [prev] (called by the service on every commit). */
+    fun recordPair(prev: String, next: String) {
+        val p = prev.lowercase().trim()
+        val n = next.lowercase().trim()
+        if (p.isEmpty() || n.isEmpty()) return
+        val key = "$p $n"
+        val w = (pairWeights[key] ?: 0) + 1
+        pairWeights[key] = w
+        if (pairWeights.size > 500) {  // bound memory: drop oldest-inserted
+            val it = pairWeights.entries.iterator()
+            it.next(); it.remove()
+        }
+    }
+
+    /** Next-word candidates for [prev]: learned pairs (weighted) over static seeds. */
+    fun predictNext(prev: String?, max: Int = 3): List<String> {
+        if (prev.isNullOrBlank()) return emptyList()
+        val p = prev.lowercase().trim()
+        val scored = ArrayList<Pair<String, Int>>()
+        for ((k, w) in pairWeights) {
+            val i = k.indexOf(' ')
+            if (i > 0 && k.startsWith("$p ")) scored.add(k.substring(i + 1) to w)
+        }
+        scored.sortByDescending { it.second }
+        val out = scored.map { it.first }.toMutableList()
+        for (s in seedPairs[p].orEmpty()) if (s !in out) out.add(s)
+        return out.take(max)
+    }
+
     /**
      * Candidates for the strip: the literal fragment (typed text) first, then
      * LEARNED words with that prefix (use-frequency order), then static completions.
-     * Empty fragment → last committed word. Deduped, max 3.
+     * Empty fragment → next-word prediction from the previous word. Deduped, max 3.
      */
     fun stripCandidates(fragment: String): List<String> {
         if (fragment.isEmpty()) {
-            return listOfNotNull(previousWord).take(3)
+            return predictNext(previousWord).ifEmpty { listOfNotNull(previousWord) }
         }
         val literal = fragment.lowercase()
         val learned = learner?.withPrefix(literal, 3).orEmpty()

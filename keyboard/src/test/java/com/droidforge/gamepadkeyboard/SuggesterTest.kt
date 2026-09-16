@@ -51,6 +51,22 @@ class SuggesterTest {
     }
 
     @Test
+    fun `next-word prediction from learned pairs and seeds`() {
+        val s = suggester()
+        // Seed: "good" predicts idea/luck/morning without any history
+        val seeded = s.predictNext("good")
+        assertTrue("idea" in seeded)
+        // Learned pair outweighs and reorders: "good" → "vibes"
+        s.recordPair("good", "vibes")
+        assertEquals("vibes", s.predictNext("good").first())
+        // Recorded pair lands in the strip when the fragment is empty
+        s.previousWord = "good"
+        assertTrue("vibes" in s.stripCandidates(""))
+        // No context → no prediction
+        assertTrue(s.predictNext(null).isEmpty())
+    }
+
+    @Test
     fun `bare forms canonicalize to apostrophe contractions`() {
         val s = suggester()
         // doesnt → doesn't offered (and as a completion, not a typo correction)

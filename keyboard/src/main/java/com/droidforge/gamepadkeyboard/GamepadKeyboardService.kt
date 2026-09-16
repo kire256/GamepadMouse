@@ -348,6 +348,13 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         kb.learnedWords = learner.all().keys.toSet()
     }
 
+    /** Record a prev→next pair when a word commits, then advance the context word. */
+    private fun recordPairFor(word: String?) {
+        val prev = suggester.previousWord
+        if (prev != null && word != null) suggester.recordPair(prev, word)
+        suggester.previousWord = word
+    }
+
     /** Long-press on a learned strip word: remove it from the dictionary. */
     override fun onForgetWord(word: String) {
         learner.forget(word)
@@ -364,7 +371,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (frag != null) ic.deleteSurroundingText(frag.length, 0)
         ic.commitText("$word ", 1)
         learner.record(word, boost = 2)  // explicit pick = stronger signal
-        suggester.previousWord = word
+        recordPairFor(word)
         keyboardView?.setSuggestions(emptyList())
     }
 
@@ -433,7 +440,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             word?.let { learner.record(it) }
             lastSpaceCommitAt = android.os.SystemClock.uptimeMillis()
         }
-        suggester.previousWord = replacement ?: word
+        recordPairFor(replacement ?: word)
         mainHandler.postDelayed(suggestionSync, 40)
     }
 
@@ -510,7 +517,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
                 learner.record(orig)  // teaches the dictionary your intended word
                 revertOriginal = null
                 revertCorrected = null
-                suggester.previousWord = orig
+                recordPairFor(orig)
                 mainHandler.removeCallbacks(suggestionSync)
                 mainHandler.postDelayed(suggestionSync, 30)
                 return
@@ -571,7 +578,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         // e.g. IME_ACTION_DONE dismisses focus — which read as "keyboard closes".)
         if (!noLearning) {
             currentWord()?.let {
-                suggester.previousWord = it
+                recordPairFor(it)
                 learner.record(it)
             }
         }
