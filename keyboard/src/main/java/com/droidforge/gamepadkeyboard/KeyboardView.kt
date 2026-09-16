@@ -83,7 +83,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.3.8"
+        const val DISPLAY_VERSION = "v0.3.9"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -141,7 +141,7 @@ class KeyboardView(context: Context) : View(context) {
     private fun emojiKey(e: String) = Key(e)
     private fun fKey(n: Int) = Key("F$n", 1f, true)
 
-    /** Bottom bar, Deck-style: pages · wide space · ◀ ▶ · mic · hide · options. */
+    /** Bottom bar, Deck-style: pages (hold=⚙ options) · wide space · ◀ ▶ · mic · hide. */
     private fun barRow(): List<Key> = listOf(
         Key(KEY_PAGES, 1.4f, true),
         Key(KEY_SPACE, 5.2f, true),
@@ -149,7 +149,6 @@ class KeyboardView(context: Context) : View(context) {
         Key(KEY_RIGHT, 1.1f, true),
         Key(KEY_MIC, 1.3f, true),
         Key(KEY_HIDE, 1.3f, true),
-        Key(KEY_OPTIONS, 1.1f, true),
     )
 
     internal var letterRows: List<List<Key>> = buildLetterRows(LanguagePack.EN)
@@ -195,13 +194,13 @@ class KeyboardView(context: Context) : View(context) {
         return false
     }
 
-    /** Dedicated numeric pad: calculator-style 789 top, big digits, math + separators.
-     *  Auto-selected when a field's inputType is number/phone/datetime. */
+    /** Dedicated numeric pad — every row sums to weight 5.0 so columns align:
+     *  789/456/123 rows, ⌫ and ↵ each spanning the right column pair. */
     private val numberRows = listOf(
-        listOf(Key("7"), Key("8"), Key("9"), backspaceKey(1.6f)),
-        listOf(Key("4"), Key("5"), Key("6"), Key("+", 1.2f), Key("-", 1.2f)),
-        listOf(Key("1"), Key("2"), Key("3"), Key("×", 1.2f), Key("÷", 1.2f)),
-        listOf(Key(",", 1.2f), Key("0", 2.2f), Key(".", 1.2f), Key(":", 1.2f), enterKey(1.6f)),
+        listOf(Key("7"), Key("8"), Key("9"), backspaceKey(2f)),
+        listOf(Key("4"), Key("5"), Key("6"), Key("÷"), Key("×")),
+        listOf(Key("1"), Key("2"), Key("3"), Key("-"), Key("+")),
+        listOf(Key(","), Key("0"), Key("."), enterKey(2f)),
         barRow(),
     )
 
@@ -274,8 +273,9 @@ class KeyboardView(context: Context) : View(context) {
     private var holdRunnable: Runnable? = null
     private var didRepeat = false
 
-    /** Space hold = language toggle (one-shot per hold, no repeat). */
+    /** Space hold = language toggle; ⇄ hold = Options (one-shot per hold). */
     private var didLangToggle = false
+    private var didHoldAction = false
 
     fun setDesiredHeightPx(px: Int) {
         desiredHeightPx = px
@@ -419,19 +419,21 @@ class KeyboardView(context: Context) : View(context) {
         holdRunnable = null
         didRepeat = false
         didLangToggle = false
+        didHoldAction = false
     }
 
     /** Schedule press behavior for the pressed cell:
-     *  space → language toggle after a hold; other repeatable keys → press-repeat. */
+     *  space hold → language toggle; ⇄ hold → Options; others → press-repeat. */
     private fun startHoldIfRepeatable(r: Int, c: Int) {
         cancelHold()
         val label = grid().getOrNull(r)?.getOrNull(c)?.label ?: return
-        if (label == KEY_SPACE) {
+        if (label == KEY_SPACE || label == KEY_PAGES) {
             val run = Runnable {
                 if (pressedRow != r || pressedCol != c) return@Runnable
-                listener?.onLanguageToggle()
+                if (label == KEY_SPACE) listener?.onLanguageToggle() else listener?.onOpenOptions()
                 if (hapticsEnabled) hapticTick()
-                didLangToggle = true
+                didLangToggle = label == KEY_SPACE
+                didHoldAction = true
             }
             holdRunnable = run
             postDelayed(run, REPEAT_DELAY_MS)
@@ -684,9 +686,9 @@ class KeyboardView(context: Context) : View(context) {
                     return true
                 }
                 val (r, c) = hitCell(event.x, event.y)
-                if (r >= 0 && !didRepeat && !didLangToggle) {
+                if (r >= 0 && !didRepeat && !didHoldAction) {
                     // Tap = direct press. Selection/highlight stays a gamepad-only cursor.
-                    // (After hold-repeat or a language hold, the lift must not fire.)
+                    // (After hold-repeat or a hold action, the lift must not fire.)
                     highlightVisible = false
                     flashCell(r, c)
                     pressKey(grid()[r][c].label)
@@ -853,6 +855,15 @@ class KeyboardView(context: Context) : View(context) {
                 val legendX = if (key.badge != null && rect.width() > 46f * density)
                     rect.centerX() - 7f * density else rect.centerX()
                 canvas.drawText(disp, legendX, rect.centerY() - (legendPaint.ascent() + legendPaint.descent()) / 2f, legendPaint)
+
+                // Options gliff on the page key: tiny ⚙ tucked under ⇄
+                if (key.label == KEY_PAGES) {
+                    legendPaint.textSize = 9f * density
+                    legendPaint.color = skin.dim
+                    canvas.drawText(
+                        "\u2699", rect.centerX() + 11f * density, rect.centerY() + 12f * density, legendPaint,
+                    )
+                }
 
                 // Gamepad badge (colored dot + letter), Deck-style
                 key.badge?.let { badge ->

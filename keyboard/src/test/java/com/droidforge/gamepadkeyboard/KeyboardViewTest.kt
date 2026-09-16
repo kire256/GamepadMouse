@@ -155,16 +155,18 @@ class KeyboardViewTest {
     }
 
     @Test
-    fun `options key on the bar row notifies listener`() {
+    fun `page tap cycles and bar layout has no options key`() {
         val l = RecordingListener()
         val v = viewWith(l)
-        // bottom bar is the last row of the LETTERS grid; ⚙ is the last key on it
-        v.moveSelection(v.letterRows.lastIndex - 1, 0) // from row 1 down to the bar row
-        var col = 0
-        while (v.selectedKey() != KeyboardView.KEY_OPTIONS && col < 24) { v.moveSelection(0, 1); col++ }
-        assertEquals(KeyboardView.KEY_OPTIONS, v.selectedKey())
-        v.pressSelectedKey()
-        assertEquals(1, l.optionsOpened)
+        // bar row is the last row of the LETTERS grid; ⇄ is its first key
+        v.moveSelection(v.letterRows.lastIndex - 1, 0)
+        assertEquals(KeyboardView.KEY_PAGES, v.selectedKey())
+        val before = v.page
+        v.pressSelectedKey() // tap = cycle pages (hold = Options, not testable via pressKey)
+        assertTrue("page should have cycled", v.page != before)
+        // options key removed from the bar in v0.3.9
+        val bar = v.letterRows.last()
+        assertTrue(bar.none { it.label == KeyboardView.KEY_OPTIONS })
     }
 
     @Test
@@ -209,8 +211,8 @@ class KeyboardViewTest {
         assertEquals("8", v.selectedKey())
         v.pressSelectedKey()
         assertEquals("8", l.keys.first())
-        // ÷ lives on row 2 (1 2 3 × ÷)
-        v.moveSelection(2, 0)
+        // ÷ lives on row 1 now (456 row: 4 5 6 ÷ ×)
+        v.moveSelection(1, 0)
         var col = 0
         while (v.selectedKey() != "÷" && col < 12) { v.moveSelection(0, 1); col++ }
         assertEquals("÷", v.selectedKey())
