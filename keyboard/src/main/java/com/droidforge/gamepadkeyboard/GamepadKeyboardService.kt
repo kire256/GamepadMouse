@@ -30,6 +30,9 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
          *  the app's manifest receiver. (Keep in sync with the app's applicationId;
          *  release builds drop the .debug suffix — align when publishing.) */
         const val MOUSE_APP_PACKAGE = "com.droidforge.gamepadmouse.debug"
+
+        /** Double-space → period recency window (Gboard uses ~300ms). */
+        const val DOUBLE_SPACE_WINDOW_MS = 320L
     }
 
     private var keyboardView: KeyboardView? = null
@@ -195,6 +198,9 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var revertOriginal: String? = null
     private var revertCorrected: String? = null
 
+    /** Recency window for double-space → period (only converts a space we just typed). */
+    private var lastSpaceCommitAt = 0L
+
     /** Pinyin candidates for the current buffer, or null when not composing. */
     private fun pinyinCandidates(): List<String>? {
         val buf = keyboardView?.pinyinBuffer ?: return null
@@ -243,7 +249,8 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     /** Finish the current word with a space and learn it (space = confirmation).
      *  Autocorrect: a non-dictionary word with available completions commits the
-     *  top suggestion instead (stock-keyboard behavior). */
+     *  top suggestion instead (stock-keyboard behavior).
+     *  Double-space → ". " when the previous space was ours and recent. */
     private fun finishWordAndSpace() {
         // Pinyin mode: space commits the top hanzi candidate (standard IME behavior)
         val composing = keyboardView?.pinyinBuffer
@@ -252,6 +259,19 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             commitPinyin(hanzi)
             return
         }
+        // Double-space → period (Gboard-style): previous space must be recent + ours
+        val now = android.os.SystemClock.uptimeMillis()
+        if (lastSpaceCommitAt > 0 && now - lastSpaceCommitAt <= DOUBLE_SPACE_WINDOW_MS) {
+            val before = currentInputConnection?.getTextBeforeCursor(1, 0)
+            if (before == " ") {
+                currentInputConnection?.deleteSurroundingText(1, 0)
+                currentInputConnection?.commitText(". ", 1)
+                lastSpaceCommitAt = 0L
+                audio.enter()
+                return
+            }
+        }
+        lastSpaceCommitAt = 0L
         val word = currentWord()  // capture BEFORE the space lands
         var replacement: String? = null
         if (word != null && prefs.suggestionsEnabled &&
@@ -269,11 +289,13 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             // Arm undo: next backspace restores the word as typed
             revertOriginal = word
             revertCorrected = replacement
+            lastSpaceCommitAt = android.os.SystemClock.uptimeMillis()
         } else {
             revertOriginal = null
             revertCorrected = null
             currentInputConnection?.commitText(" ", 1)
             word?.let { learner.record(it) }
+            lastSpaceCommitAt = android.os.SystemClock.uptimeMillis()
         }
         suggester.previousWord = replacement ?: word
         mainHandler.postDelayed(suggestionSync, 40)
@@ -283,6 +305,11 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onKey(text: String) {
         currentInputConnection?.commitText(text, 1)
+        // Sentence end → auto-capitalize the next word (unless caps is latched;
+        // autoCap is one-shot and cleared on first use or by pressing Shift)
+        if (text.length == 1 && text[0] in ".!?" && keyboardView?.capsLockEnabled != true) {
+            keyboardView?.autoCap = true
+        }
         audio.tap()
         mainHandler.removeCallbacks(suggestionSync)
         mainHandler.postDelayed(suggestionSync, 40)
