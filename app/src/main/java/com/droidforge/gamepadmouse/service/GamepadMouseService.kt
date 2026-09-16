@@ -655,10 +655,12 @@ class GamepadMouseService : AccessibilityService() {
         if (!fromGamepad && !KeyEvent.isGamepadButton(event.keyCode)) return false
 
         val code = event.keyCode
-        // When the Gamepad Keyboard IME is the active input method, gamepad keys belong
-        // to it (A types, X deletes, d-pad navigates) — stand down so the IME receives
-        // them. The toggle chord stays reserved for mode cycling.
-        if (code !in settings.toggleChord && isGamepadKeyboardImeActive()) return false
+        // When the Gamepad Keyboard IME surface is UP, gamepad keys belong to it
+        // (A types, X deletes, d-pad navigates) — stand down so the IME receives
+        // them. When it's merely the default IME but hidden, keys belong to us —
+        // otherwise mouse-mode clicks would fall through to the focused view.
+        // The toggle chord stays reserved for mode cycling either way.
+        if (code !in settings.toggleChord && imeOverlayUp) return false
 
         if (_mode.value == ServiceMode.MOUSE && imeShield && event.action == KeyEvent.ACTION_DOWN) {
             // User grabbed the gamepad again: restore joystick capture focus.
@@ -814,15 +816,6 @@ class GamepadMouseService : AccessibilityService() {
         }
     }
     
-
-    /** True when the Gamepad Keyboard IME is the user's active input method. */
-    private fun isGamepadKeyboardImeActive(): Boolean {
-        val active = android.provider.Settings.Secure.getString(
-            contentResolver,
-            android.provider.Settings.Secure.DEFAULT_INPUT_METHOD,
-        ) ?: return false
-        return active.startsWith("com.droidforge.gamepadkeyboard")
-    }
 
     /** D-pad nudges the cursor a fixed step when no analog stick is present (e.g. INMO ring). */
     private fun dpadFallback(code: Int): MouseAction? {
