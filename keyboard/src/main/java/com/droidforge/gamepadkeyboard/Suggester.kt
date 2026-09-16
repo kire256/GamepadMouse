@@ -83,18 +83,23 @@ class Suggester(
         return CONTRACTIONS + fromAsset
     }
 
-    /** High-frequency apostrophe forms, ranked as a block at the top of the dict. */
-    private val CONTRACTIONS = listOf(
-        "can't", "don't", "won't", "doesn't", "didn't", "isn't", "aren't", "wasn't",
-        "weren't", "hasn't", "haven't", "hadn't", "couldn't", "shouldn't", "wouldn't",
-        "i'm", "i've", "i'll", "i'd", "it's", "that's", "there's", "what's", "let's",
-        "we're", "they're", "you're", "you've", "you'll", "he's", "she's", "who's",
-        "here's", "we've", "we'll", "they've", "o'clock",
-    )
+    /** High-frequency apostrophe forms — companion so loadFromAssets can read them
+     *  during construction (instance properties aren't initialized in call order). */
+    private companion object {
+        val CONTRACTIONS = listOf(
+            "can't", "don't", "won't", "doesn't", "didn't", "isn't", "aren't", "wasn't",
+            "weren't", "hasn't", "haven't", "hadn't", "couldn't", "shouldn't", "wouldn't",
+            "i'm", "i've", "i'll", "i'd", "it's", "that's", "there's", "what's", "let's",
+            "we're", "they're", "you're", "you've", "you'll", "he's", "she's", "who's",
+            "here's", "we've", "we'll", "they've", "o'clock",
+        )
 
-    /** Canonical apostrophe form for an apostrophe-less typing ("doesnt"→"doesn't"). */
-    private val canonByStripped: Map<String, String> =
-        CONTRACTIONS.associateBy { it.replace("'", "") }
+        /** Canonical apostrophe form for an apostrophe-less typing ("doesnt"→"doesn't"). */
+        val canonByStripped: Map<String, String> =
+            CONTRACTIONS.associateBy { it.replace("'", "") }
+
+        const val WORDLIST = "words_en.txt"
+    }
 
     /** Static-list completions (no learned words), frequency-ranked. */
     fun suggest(fragment: String, max: Int = 3): List<String> {
@@ -165,9 +170,5 @@ class Suggester(
         // Typed fragment looks like a typo (few/no prefix matches) → fuzzy tier
         val fuzzy = fuzzySuggest(literal).filter { it !in base }
         return (base + fuzzy).distinct().take(3)
-    }
-
-    private companion object {
-        const val WORDLIST = "words_en.txt"
     }
 }
