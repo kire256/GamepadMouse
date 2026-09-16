@@ -81,12 +81,13 @@ class KeyboardViewTest {
         // X is handled by the service now (hold-aware backspace); L2 = type left cursor
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_L2))
         assertEquals(1, l.keys.size)
-        // Right cursor parked → R2 does nothing until the right stick moves it
+        // Radial: R2 with stick centered types the right anchor key
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_R2))
-        assertEquals(1, l.keys.size)
-        v.moveRightSelection(0, 1) // wake the right cursor (lands right-half home row)
-        v.pressRightKey()
         assertEquals(2, l.keys.size)
+        // Hold right-stick right → offset highlight → R2 types THAT key
+        v.setRightStickOffset(0, 1)
+        v.pressRightRadial()
+        assertEquals(3, l.keys.size)
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_START))
         assertEquals(1, l.enters)
     }
