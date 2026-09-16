@@ -84,10 +84,12 @@ class KeyboardViewTest {
         // Radial: R2 with stick centered types the right anchor key
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_R2))
         assertEquals(2, l.keys.size)
-        // Hold right-stick right → offset highlight → R2 types THAT key
-        v.setRightStickOffset(0, 1)
+        // Up-right deflection (scaled radius) → reaches the digit row → R2 types it
+        v.setRightStickVector(0.6f, -0.8f)
         v.pressRightRadial()
         assertEquals(3, l.keys.size)
+        // anchor (row2 idx9) + up 2, right 2 → top row index 11
+        assertEquals(v.letterRows[0][11].label, l.keys.last())
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_START))
         assertEquals(1, l.enters)
     }

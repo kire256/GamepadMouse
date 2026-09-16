@@ -69,8 +69,6 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     private var lastHatY = 0f
     private var lastStickX = 0f
     private var lastStickY = 0f
-    private var lastRightDc = 0
-    private var lastRightDr = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -148,19 +146,16 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (sy >= 0.5f && lastStickY < 0.5f) { kb.startDirectionalRepeat(1, 0); handled = true }
         if (sx > -0.5f && sx < 0.5f && (lastStickX <= -0.5f || lastStickX >= 0.5f)) kb.stopDirectionalRepeat()
         if (sy > -0.5f && sy < 0.5f && (lastStickY <= -0.5f || lastStickY >= 0.5f)) kb.stopDirectionalRepeat()
+        // White-dot feedback: left stick deflected = cursor is being driven
+        val leftHeld = sx <= -0.5f || sx >= 0.5f || sy <= -0.5f || sy >= 0.5f
+        if (kb.leftStickHeld != leftHeld) kb.leftStickHeld = leftHeld
         lastStickX = sx; lastStickY = sy
 
-        // Right stick LEVELS → radial offset (held direction highlights; release
-        // returns to anchor). dc=-1/0/+1 rows, dr likewise.
+        // Right stick VECTOR → radial selector (continuous; scaled radius reaches
+        // every key in the right half; deadzone in the view).
         val rx = event.getAxisValue(MotionEvent.AXIS_Z)
         val ry = event.getAxisValue(MotionEvent.AXIS_RZ)
-        val rdc = if (rx <= -0.5f) -1 else if (rx >= 0.5f) 1 else 0
-        val rdr = if (ry <= -0.5f) -1 else if (ry >= 0.5f) 1 else 0
-        if (rdc != lastRightDc || rdr != lastRightDr) {
-            kb.setRightStickOffset(rdr, rdc)
-            lastRightDc = rdc; lastRightDr = rdr
-            handled = handled || (rdc != 0 || rdr != 0)
-        }
+        kb.setRightStickVector(rx, ry)
 
         return handled || super.onGenericMotionEvent(event)
     }
