@@ -36,7 +36,7 @@ class Suggester(
         for ((rank, cand) in words.withIndex()) {
             if (cand[0] != w[0] || cand == w) continue
             if (kotlin.math.abs(cand.length - w.length) > maxDistance) continue
-            if (levenshtein(w, cand, maxDistance) <= maxDistance && rank < bestRank) {
+            if (levenshteinCapped(w, cand, maxDistance) <= maxDistance && rank < bestRank) {
                 best = cand
                 bestRank = rank
             }
@@ -45,7 +45,7 @@ class Suggester(
     }
 
     /** Bounded Levenshtein: early-exits once the distance exceeds [cap]. */
-    private fun levenshtein(a: String, b: String, cap: Int): Int {
+    private fun levenshteinCapped(a: String, b: String, cap: Int): Int {
         var prev = IntArray(b.length + 1) { it }
         val curr = IntArray(b.length + 1)
         for (i in 1..a.length) {
@@ -94,6 +94,31 @@ class Suggester(
     }
 
     /**
+     * Fuzzy suggestions for words with typos: rank dictionary words by
+     * (1) prefix match, (2) small edit distance to the typed fragment, keeping
+     * frequency order inside each tier. Best effort, single pass, cheap caps.
+     */
+    fun fuzzySuggest(fragment: String, max: Int = 3): List<String> {
+        val f = fragment.lowercase()
+        if (f.length < 3 || words.isEmpty()) return emptyList()
+        val prefix = suggest(f, max)                       // tier 1: completions
+        if (prefix.size >= max) return prefix
+
+        // Tier 2: nearest words by edit distance (≤2, tolerant of transpositions)
+        val cap = if (f.length >= 5) 2 else 1
+        val scored = ArrayList<Pair<Int, Int>>(8)         // (distance, freq-rank)
+        for ((rank, w) in words.withIndex()) {
+            if (w in prefix || kotlin.math.abs(w.length - f.length) > cap) continue
+            if (w[0] != f[0] && w.getOrNull(1) != f.getOrNull(1)) continue
+            val d = levenshteinCapped(f, w, cap)
+            if (d <= cap) scored.add(d to rank)           // distance first, then freq
+        }
+        scored.sortWith(compareBy({ it.first }, { it.second }))
+        return (prefix + scored.take(max - prefix.size).map { words[it.second] })
+            .distinct().take(max)
+    }
+
+    /**
      * Candidates for the strip: the literal fragment (typed text) first, then
      * LEARNED words with that prefix (use-frequency order), then static completions.
      * Empty fragment → last committed word. Deduped, max 3.
@@ -104,7 +129,11 @@ class Suggester(
         }
         val literal = fragment.lowercase()
         val learned = learner?.withPrefix(literal, 3).orEmpty()
-        return (listOf(literal) + learned + suggest(literal)).distinct().take(3)
+        val base = (listOf(literal) + learned + suggest(literal)).distinct()
+        if (base.size >= 3) return base.take(3)
+        // Typed fragment looks like a typo (few/no prefix matches) → fuzzy tier
+        val fuzzy = fuzzySuggest(literal).filter { it !in base }
+        return (base + fuzzy).distinct().take(3)
     }
 
     private companion object {

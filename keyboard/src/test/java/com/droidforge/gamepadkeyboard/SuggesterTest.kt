@@ -41,6 +41,15 @@ class SuggesterTest {
     }
 
     @Test
+    fun `fuzzy suggestions catch typos like hrllo to hello`() {
+        val out = suggester().fuzzySuggest("hrllo")
+        assertTrue("expected 'hello' in fuzzy results: $out", "hello" in out)
+        // And the strip offers it for a typo'd fragment
+        val strip = suggester().stripCandidates("hrllo")
+        assertTrue("expected 'hello' in strip: $strip", "hello" in strip)
+    }
+
+    @Test
     fun `completions for common prefix are ranked by frequency`() {
         val out = suggester().suggest("th")
         assertTrue("expected completions for 'th', got $out", out.isNotEmpty())
