@@ -83,7 +83,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.3.9"
+        const val DISPLAY_VERSION = "v0.4.0"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -205,10 +205,11 @@ class KeyboardView(context: Context) : View(context) {
     )
 
     private val symbolRows = listOf(
-        listOf(Key("€"),Key("£"),Key("¥"),Key("¢"),Key("°"),Key("•"),Key("¡"),Key("¿"),Key("«"),Key("»"),Key("§"), backspaceKey()),
-        listOf(Key(KEY_TAB,1.6f,true),Key("à"),Key("á"),Key("é"),Key("è"),Key("í"),Key("ó"),Key("ú"),Key("ü"),Key("ñ"),Key("ç"),Key("ß")),
-        listOf(Key(KEY_EMOJI_PAGE,1.7f,true),Key("ā"),Key("ē"),Key("ī"),Key("ō"),Key("ū"),Key("â"),Key("ê"),Key("î"),Key("ô"),Key("û"), enterKey()),
-        listOf(shiftKey(),Key("Ã"),Key("Æ"),Key("Ø"),Key("Å"),Key("Œ"),Key("Þ"),Key("Ð"),Key("Ý"),Key("Λ"),Key("Ω"), shiftKey()),
+        // punctuation row: everything hidden by compact mode lives here
+        listOf(Key("~"),Key("`"),Key("-"),Key("_"),Key("="),Key("+"),Key("{"),Key("}"),Key("["),Key("]"),Key("\\"),Key("|"), backspaceKey(1.3f)),
+        listOf(Key("!"),Key("@"),Key("#"),Key("$"),Key("%"),Key("^"),Key("&"),Key("*"),Key("("),Key(")"),Key("/"),Key("?"), backspaceKey(1.3f)),
+        listOf(Key(KEY_TAB,1.6f,true),Key("à"),Key("á"),Key("é"),Key("è"),Key("í"),Key("ó"),Key("ú"),Key("ü"),Key("ñ"),Key("ç"),Key("ß"), enterKey()),
+        listOf(shiftKey(),Key("Ã"),Key("Æ"),Key("Ø"),Key("Å"),Key("Œ"),Key("Þ"),Key("Ð"),Key("Ý"),Key("Λ"),Key("Ω"),Key(","),Key("."),Key(":"),Key("\""),Key("'"),Key(";"), shiftKey()),
         barRow(),
     )
 
@@ -304,7 +305,20 @@ class KeyboardView(context: Context) : View(context) {
             invalidate()
         }
 
-    private fun grid(): List<List<Key>> {
+    /** Compact mode: drop `-=[]\;'/` (and the right Shift) from the letters page —
+     *  all of them live on the SYMBOLS page anyway. Frees width for bigger keys. */
+    var compactMode = false
+        set(value) {
+            if (field == value) return
+            field = value
+            normalizeSelection()
+            invalidate()
+        }
+
+    /** Keys hidden from the letters page in compact mode. */
+    private val compactHidden = setOf("-", "=", "[", "]", "\\", ";", "'", ",")
+
+    internal fun grid(): List<List<Key>> {
         val base = when (page) {
             Page.LETTERS -> letterRows
             Page.NUMBERS -> numberRows
@@ -312,8 +326,21 @@ class KeyboardView(context: Context) : View(context) {
             Page.EMOJI -> emojiRows
             Page.FN -> fnRows
         }
-        if (arrowsVisible) return base
-        return base.map { row -> row.filter { it.label != KEY_LEFT && it.label != KEY_RIGHT } }
+        var rows = if (arrowsVisible) base else
+            base.map { row -> row.filter { it.label != KEY_LEFT && it.label != KEY_RIGHT } }
+        if (compactMode && page == Page.LETTERS) {
+            rows = rows.mapIndexed { i, row ->
+                if (i == 1) row.filter { it.label !in compactHidden }
+                else if (i == 2) row.filter { it.label !in compactHidden }
+                else row
+            }
+            // drop the right shift (last key of the bottom letter row)
+            val bottom = rows[3]
+            if (bottom.count { it.label == KEY_SHIFT } > 1) {
+                rows = rows.toMutableList().also { it[3] = bottom.dropLast(1) }
+            }
+        }
+        return rows
     }
 
     private fun normalizeSelection() {

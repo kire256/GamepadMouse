@@ -155,6 +155,7 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         classifyField(info)
         keyboardView?.page = KeyboardView.pageForInputType(info?.inputType ?: 0)
         keyboardView?.arrowsVisible = prefs.arrowsVisible
+        keyboardView?.compactMode = prefs.compactMode
         keyboardView?.language = LanguagePack.fromCode(prefs.languageCode)
         revertOriginal = null
         revertCorrected = null

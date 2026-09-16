@@ -54,6 +54,11 @@ class KeyboardPrefs(context: Context) {
         get() = sp.getBoolean(KEY_ESC_BS, true)
         set(v) = sp.edit().putBoolean(KEY_ESC_BS, v).apply()
 
+    /** Compact letters: hide redundant punctuation keys from the main layout. */
+    var compactMode: Boolean
+        get() = sp.getBoolean(KEY_COMPACT, false)
+        set(v) = sp.edit().putBoolean(KEY_COMPACT, v).apply()
+
     private companion object {
         const val KEY_SKIN = "skin"
         const val KEY_SOUND = "sound_pack"
@@ -65,5 +70,6 @@ class KeyboardPrefs(context: Context) {
         const val KEY_ARROWS = "arrows_visible"
         const val KEY_LANG = "language"
         const val KEY_ESC_BS = "escalating_backspace"
+        const val KEY_COMPACT = "compact_mode"
     }
 }

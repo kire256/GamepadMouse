@@ -99,6 +99,9 @@ class OptionsActivity : Activity() {
         label("Escalating backspace (hold to delete words)", root)
         switch(root, prefs.escalatingBackspace) { prefs.escalatingBackspace = it }
 
+        label("Compact letters (hide -=[]\\ ;' — find them under @#:)", root)
+        switch(root, prefs.compactMode) { prefs.compactMode = it }
+
         // ---- Voice input ----
         label("Microphone (voice dictation)", root)
         root.addView(android.widget.Button(this).apply {

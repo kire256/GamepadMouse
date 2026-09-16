@@ -202,6 +202,25 @@ class KeyboardViewTest {
     }
 
     @Test
+    fun `compact mode hides punctuation and right shift from letters`() {
+        val v = viewWith(RecordingListener())
+        v.compactMode = true
+        val full = v.letterRows
+        val compact = v.grid()
+        // every row must be same-or-smaller
+        assertTrue(compact[1].size < full[1].size)  // - = [ ] \ dropped
+        assertTrue(compact[2].size < full[2].size)  // ; ' dropped
+        // right shift gone, left shift kept
+        assertEquals(1, compact[3].count { it.label == KeyboardView.KEY_SHIFT })
+        // letters all still present
+        assertTrue(compact[1].any { it.label == "q" } && compact[2].any { it.label == "a" })
+        // symbols page still has them
+        v.page = KeyboardView.Page.SYMBOLS
+        val sym = v.grid().flatten().map { it.label }
+        assertTrue("-" in sym && "=" in sym && "[" in sym && "?" in sym && ";" in sym)
+    }
+
+    @Test
     fun `numeric pad types digits and math operators`() {
         val l = RecordingListener()
         val v = viewWith(l)

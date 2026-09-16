@@ -11,8 +11,8 @@ android {
         applicationId = "com.droidforge.gamepadkeyboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 32
-        versionName = "0.3.9-bar-cleanup"
+        versionCode = 33
+        versionName = "0.4.0-compact"
     }
 
     buildTypes {
