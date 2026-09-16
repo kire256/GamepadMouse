@@ -90,15 +90,13 @@ class KeyboardViewTest {
         assertEquals(3, l.keys.size)
         // anchor (row2 idx9) + up 2, right 2 → top row index 11
         assertEquals(v.letterRows[0][11].label, l.keys.last())
-        // Left stick radial mirrors it on the left half: LT centered = left anchor
+        // Left stick drives the CURSOR: LT types whatever key the cursor highlights
+        v.setLeftStickVector(0.5f, 0f)  // deflected → white dot on cursor key
+        v.moveSelection(0, -1)          // cursor to a new key
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_L2))
         assertEquals(4, l.keys.size)
-        v.setLeftStickVector(-0.6f, -0.8f)  // up-left → digit row
-        v.pressLeftRadial()
-        assertEquals(5, l.keys.size)
-        // anchor (row2 idx3) + up 2 (round -1.6→-2), left 2 (round -1.8→-2) → (0,1)
-        assertEquals(v.letterRows[0][1].label, l.keys.last())
-        assertEquals("1", l.keys.last())
+        // cursor sits on Tab → L2 typed a literal tab character
+        assertEquals("\t", l.keys.last())
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_START))
         assertEquals(1, l.enters)
     }
