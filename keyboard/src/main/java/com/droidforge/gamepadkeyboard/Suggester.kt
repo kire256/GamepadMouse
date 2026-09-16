@@ -19,10 +19,6 @@ class Suggester(
     /** Membership set — the list itself is frequency-ranked (NOT sorted), so no binary search. */
     private val wordSet: Set<String> = words.toHashSet()
 
-    /** True when [word] (case-insensitive) is in the dictionary. */
-    fun knows(word: String): Boolean =
-        word.isNotEmpty() && word.lowercase() in wordSet
-
     /**
      * Closest dictionary word to [word] within Levenshtein distance [maxDistance]
      * (same first letter, length ±2, frequency-ranked). Null when nothing is close
@@ -72,8 +68,8 @@ class Suggester(
     /** Last committed word, for caret-left completions. */
     var previousWord: String? = null
 
-    private fun loadFromAssets(context: Context): List<String> =
-        runCatching {
+    private fun loadFromAssets(context: Context): List<String> {
+        val fromAsset = runCatching {
             context.assets.open(WORDLIST).bufferedReader().readLines()
                 // Format: "word count" (opensubs 50k) or plain "word" (10k legacy)
                 .map { it.substringBefore(' ').trim().lowercase() }
@@ -82,18 +78,50 @@ class Suggester(
             _loadError = e.message ?: e.javaClass.simpleName
             emptyList()
         }
+        // Canonical contractions ranked ahead of the corpus (the opensubs list has
+        // "doesnt" but no apostrophe forms; English wants doesn't/can't/I'm).
+        return CONTRACTIONS + fromAsset
+    }
+
+    /** High-frequency apostrophe forms, ranked as a block at the top of the dict. */
+    private val CONTRACTIONS = listOf(
+        "can't", "don't", "won't", "doesn't", "didn't", "isn't", "aren't", "wasn't",
+        "weren't", "hasn't", "haven't", "hadn't", "couldn't", "shouldn't", "wouldn't",
+        "i'm", "i've", "i'll", "i'd", "it's", "that's", "there's", "what's", "let's",
+        "we're", "they're", "you're", "you've", "you'll", "he's", "she's", "who's",
+        "here's", "we've", "we'll", "they've", "o'clock",
+    )
+
+    /** Canonical apostrophe form for an apostrophe-less typing ("doesnt"→"doesn't"). */
+    private val canonByStripped: Map<String, String> =
+        CONTRACTIONS.associateBy { it.replace("'", "") }
 
     /** Static-list completions (no learned words), frequency-ranked. */
     fun suggest(fragment: String, max: Int = 3): List<String> {
         if (fragment.length < 2 || words.isEmpty()) return emptyList()
         val f = fragment.lowercase()
         val out = ArrayList<String>(max)
-        if (f in wordSet) out.add(f)
+        // "doesnt" → canonical "doesn't" ahead of everything else
+        val canonical = canonByStripped[f]
+        if (canonical != null) out.add(canonical)
+        if (f in wordSet && canonical == null) out.add(f)
         for (w in words) {
             if (out.size >= max) break
             if (w.length > f.length && w.startsWith(f) && w !in out) out.add(w)
         }
         return out
+    }
+
+    /**
+     * Dictionary membership for autocorrect decisions. Bare forms with a canonical
+     * apostrophe spelling ("doesnt", "dont", "cant") are treated as NOT known so
+     * space converts them — except genuinely ambiguous words (its, id, ill).
+     */
+    private val ambiguousBare = setOf("its", "id", "ill", "well", "were")
+    fun knows(word: String): Boolean {
+        val w = word.lowercase()
+        if (canonByStripped.containsKey(w) && w !in ambiguousBare) return false
+        return w.isNotEmpty() && w in wordSet
     }
 
     /**

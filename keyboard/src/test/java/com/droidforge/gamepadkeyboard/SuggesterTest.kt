@@ -51,6 +51,21 @@ class SuggesterTest {
     }
 
     @Test
+    fun `bare forms canonicalize to apostrophe contractions`() {
+        val s = suggester()
+        // doesnt → doesn't offered (and as a completion, not a typo correction)
+        assertTrue("'doesn't' missing: ${s.suggest("doesnt")}", "doesn't" in s.suggest("doesnt"))
+        // bare form counts as unknown so space converts it…
+        assertTrue("doesnt should not be 'known'", !s.knows("doesnt"))
+        // …but genuinely ambiguous words stay alone
+        assertTrue("its must remain known", s.knows("its"))
+        // apostrophe forms learn fine
+        val learner = WordLearner(RuntimeEnvironment.getApplication())
+        learner.record("can't")
+        assertTrue(learner.knows("can't"))
+    }
+
+    @Test
     fun `completions for common prefix are ranked by frequency`() {
         val out = suggester().suggest("th")
         assertTrue("expected completions for 'th', got $out", out.isNotEmpty())

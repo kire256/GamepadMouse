@@ -24,7 +24,9 @@ class WordLearner private constructor(private val file: File) {
     @Synchronized
     fun record(word: String, boost: Int = 1) {
         val w = word.lowercase().trim()
-        if (w.length < 2 || !w.all { it.isLetter() }) return
+        if (w.length < 2 || !w.all { it.isLetter() || it == '\'' } ||
+            w.startsWith("'") || w.endsWith("'") || w.contains("''")
+        ) return
         words[w] = ((words[w] ?: 0) + boost).coerceAtMost(MAX_FREQ)
         persist()
     }
