@@ -70,11 +70,6 @@ fun getActionIcon(action: MouseAction): ImageVector = when (action) {
     MouseAction.VOLUME_UP -> Icons.Filled.VolumeUp
     MouseAction.VOLUME_DOWN -> Icons.Filled.VolumeDown
     MouseAction.VOLUME_MUTE -> Icons.Filled.VolumeMute
-    MouseAction.KEYBOARD_MODE -> Icons.Filled.Menu
-    MouseAction.KEYBOARD_PRESS -> Icons.Filled.TouchApp
-    MouseAction.KEYBOARD_BACK -> Icons.Filled.KeyboardArrowLeft
-    MouseAction.KEYBOARD_MOVE -> Icons.Filled.Menu
-    MouseAction.KEYBOARD_HIDE -> Icons.Filled.KeyboardArrowLeft
 }
 
 // Icon mapping for buttons - simple text glyphs
@@ -118,11 +113,6 @@ fun CategorizedActionPickerDialog(
         MouseAction.SLOW,
         MouseAction.FAST,
         MouseAction.TOGGLE_MODE,
-        MouseAction.KEYBOARD_MODE,
-        MouseAction.KEYBOARD_PRESS,
-        MouseAction.KEYBOARD_BACK,
-        MouseAction.KEYBOARD_MOVE,
-        MouseAction.KEYBOARD_HIDE,
     )
     
     val systemActions = listOf(

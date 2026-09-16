@@ -38,12 +38,6 @@ data class Settings(
     val cursorSize: Float = 1.0f,        // Cursor size multiplier (0.5 to 2.0)
     val cursorColor: Int = 0xFFFFFFFF.toInt(),  // ARGB color
     val autoHideTimeoutMs: Long = 3000L,
-    val keyboardWidthPercent: Float = 80f,
-    val keyboardHeightPercent: Float = 45f,
-    val keyboardAtTop: Boolean = false,
-    val keyboardShowNumberRow: Boolean = true,
-    val keyboardShowSystemKeys: Boolean = true,
-    val keyboardColor: Int = 0xFF202124.toInt(),
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gamepad_mouse")
@@ -70,12 +64,6 @@ class SettingsRepository(private val context: Context) {
         val CURSOR_SIZE = floatPreferencesKey("cursor_size")
         val CURSOR_COLOR = intPreferencesKey("cursor_color")
         val AUTO_HIDE_TIMEOUT = longPreferencesKey("auto_hide_timeout_ms")
-        val KEYBOARD_WIDTH = floatPreferencesKey("keyboard_width_percent")
-        val KEYBOARD_HEIGHT = floatPreferencesKey("keyboard_height_percent")
-        val KEYBOARD_AT_TOP = booleanPreferencesKey("keyboard_at_top")
-        val KEYBOARD_NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
-        val KEYBOARD_SYSTEM_KEYS = booleanPreferencesKey("keyboard_system_keys")
-        val KEYBOARD_COLOR = intPreferencesKey("keyboard_color")
         val AUTO_SHOW_KEYBOARD = booleanPreferencesKey("auto_show_keyboard_on_text_field")
     }
 
@@ -102,20 +90,14 @@ class SettingsRepository(private val context: Context) {
             toggleChord = toggleChordSet ?: DefaultBindings.toggleChord,
             chordHoldDurationMs = p[Keys.CHORD_HOLD_DURATION] ?: 0L,
             buttonBindings = p[Keys.BINDINGS]?.let(::decodeBindings) ?: DefaultBindings.buttons,
-            detailedBindings = DefaultBindings.withKeyboardDefaults(p[Keys.DETAILED_BINDINGS]?.let(BindingCodec::decode)
+            detailedBindings = p[Keys.DETAILED_BINDINGS]?.let(BindingCodec::decode)
                 ?: p[Keys.BINDINGS]?.let(BindingCodec::decode)
-                ?: DefaultBindings.detailed),
+                ?: DefaultBindings.detailed,
             audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL",
             cursorStyle = p[Keys.CURSOR_STYLE] ?: "ARROW",
             cursorSize = p[Keys.CURSOR_SIZE] ?: 1.0f,
             cursorColor = p[Keys.CURSOR_COLOR] ?: 0xFFFFFFFF.toInt(),
             autoHideTimeoutMs = p[Keys.AUTO_HIDE_TIMEOUT] ?: 3000L,
-            keyboardWidthPercent = p[Keys.KEYBOARD_WIDTH] ?: 80f,
-            keyboardHeightPercent = p[Keys.KEYBOARD_HEIGHT] ?: 45f,
-            keyboardAtTop = p[Keys.KEYBOARD_AT_TOP] ?: false,
-            keyboardShowNumberRow = p[Keys.KEYBOARD_NUMBER_ROW] ?: true,
-            keyboardShowSystemKeys = p[Keys.KEYBOARD_SYSTEM_KEYS] ?: true,
-            keyboardColor = p[Keys.KEYBOARD_COLOR] ?: 0xFF202124.toInt(),
         )
     }
 
@@ -140,12 +122,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun setCursorSize(size: Float) = context.dataStore.edit { it[Keys.CURSOR_SIZE] = size }
     suspend fun setCursorColor(color: Int) = context.dataStore.edit { it[Keys.CURSOR_COLOR] = color }
     suspend fun setAutoHideTimeout(ms: Long) = context.dataStore.edit { it[Keys.AUTO_HIDE_TIMEOUT] = ms }
-    suspend fun setKeyboardWidthPercent(value: Float) = context.dataStore.edit { it[Keys.KEYBOARD_WIDTH] = value.coerceIn(40f, 100f) }
-    suspend fun setKeyboardHeightPercent(value: Float) = context.dataStore.edit { it[Keys.KEYBOARD_HEIGHT] = value.coerceIn(25f, 80f) }
-    suspend fun setKeyboardAtTop(value: Boolean) = context.dataStore.edit { it[Keys.KEYBOARD_AT_TOP] = value }
-    suspend fun setKeyboardShowNumberRow(value: Boolean) = context.dataStore.edit { it[Keys.KEYBOARD_NUMBER_ROW] = value }
-    suspend fun setKeyboardShowSystemKeys(value: Boolean) = context.dataStore.edit { it[Keys.KEYBOARD_SYSTEM_KEYS] = value }
-    suspend fun setKeyboardColor(value: Int) = context.dataStore.edit { it[Keys.KEYBOARD_COLOR] = value }
 
     companion object {
         fun encodeBindings(b: Map<Int, MouseAction>): String =

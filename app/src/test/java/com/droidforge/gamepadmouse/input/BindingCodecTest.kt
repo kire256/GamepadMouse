@@ -10,7 +10,7 @@ class BindingCodecTest {
     fun roundTripPreservesChordModesAndHold() {
         val binding = ButtonBinding(
             keyCodes = setOf(96, 99),
-            action = MouseAction.KEYBOARD_MODE,
+            action = MouseAction.TOGGLE_MODE,
             modes = setOf(BindingMode.GAMEPAD, BindingMode.MOUSE),
             holdDurationMs = 750L,
         )
@@ -36,6 +36,5 @@ class BindingCodecTest {
 
         assertTrue(binding.appliesIn(ServiceMode.MOUSE))
         assertFalse(binding.appliesIn(ServiceMode.GAMEPAD))
-        assertFalse(binding.appliesIn(ServiceMode.KEYBOARD))
     }
 }

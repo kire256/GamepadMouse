@@ -26,14 +26,9 @@ enum class MouseAction(val label: String) {
     VOLUME_UP("Volume Up"),
     VOLUME_DOWN("Volume Down"),
     VOLUME_MUTE("Mute / Unmute"),
-    KEYBOARD_MODE("Keyboard Mode"),
-    KEYBOARD_PRESS("Keyboard press"),
-    KEYBOARD_BACK("Keyboard backspace"),
-    KEYBOARD_MOVE("Keyboard move position"),
-    KEYBOARD_HIDE("Keyboard hide"),
 }
 
-enum class ServiceMode { GAMEPAD, MOUSE, KEYBOARD }
+enum class ServiceMode { GAMEPAD, MOUSE }
 
 object DefaultBindings {
     /** Default button → action map for MOUSE mode. Fully reassignable in later phases. */
@@ -47,23 +42,8 @@ object DefaultBindings {
         KeyEvent.KEYCODE_BUTTON_THUMBL to MouseAction.HOME,
     )
 
-    private val keyboardDefaults = listOf(
-        // Erik's spec: A = type, B = close keyboard, X = delete (backspace).
-        // Y falls through to KeyboardInputRouter (shift); Select/Back hides too.
-        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_A), MouseAction.KEYBOARD_PRESS, setOf(BindingMode.KEYBOARD), 0L),
-        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_B), MouseAction.KEYBOARD_HIDE, setOf(BindingMode.KEYBOARD), 0L),
-        ButtonBinding(setOf(KeyEvent.KEYCODE_BUTTON_X), MouseAction.KEYBOARD_BACK, setOf(BindingMode.KEYBOARD), 0L),
-    )
-
     val detailed: List<ButtonBinding> = buttons.map { (keyCode, action) ->
         ButtonBinding(setOf(keyCode), action, setOf(BindingMode.MOUSE), 0L)
-    } + keyboardDefaults
-
-    fun withKeyboardDefaults(bindings: List<ButtonBinding>): List<ButtonBinding> {
-        val missing = keyboardDefaults.filter { default ->
-            bindings.none { it.action == default.action && BindingMode.KEYBOARD in it.modes }
-        }
-        return bindings + missing
     }
 
     /** Default chord that flips GAMEPAD ⇄ MOUSE: Start + Select held together. */

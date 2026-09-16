@@ -7,7 +7,7 @@ class BindingMatcherResetTest {
     @Test
     fun resetAllowsModeSwitchBindingToFireWithoutReceivingKeyUp() {
         val matcher = BindingMatcher()
-        val binding = ButtonBinding(setOf(96), MouseAction.KEYBOARD_MODE)
+        val binding = ButtonBinding(setOf(96), MouseAction.TOGGLE_MODE)
 
         matcher.keyDown(96)
         matcher.markFired(binding)

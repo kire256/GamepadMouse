@@ -19,13 +19,9 @@ import com.droidforge.gamepadmouse.audio.AudioCue
 import com.droidforge.gamepadmouse.audio.AudioPack
 import com.droidforge.gamepadmouse.input.ChordDetector
 import com.droidforge.gamepadmouse.input.DefaultBindings
-import com.droidforge.gamepadmouse.input.KeyboardCommand
-import com.droidforge.gamepadmouse.input.KeyboardInputRouter
-import com.droidforge.gamepadmouse.input.HatNavigationDetector
 import com.droidforge.gamepadmouse.input.BindingMatcher
 import com.droidforge.gamepadmouse.input.ButtonBinding
 import com.droidforge.gamepadmouse.input.MouseAction
-import com.droidforge.gamepadmouse.input.ModeTransitions
 import com.droidforge.gamepadmouse.input.ServiceMode
 import com.droidforge.gamepadmouse.input.StickProcessor
 import com.droidforge.gamepadmouse.settings.Settings
@@ -121,8 +117,6 @@ class GamepadMouseService : AccessibilityService() {
 
     private lateinit var windowManager: WindowManager
     private var overlay: CursorOverlayView? = null
-    private var keyboardOverlay: KeyboardOverlayView? = null
-    private var keyboardTargetNode: android.view.accessibility.AccessibilityNodeInfo? = null
     /** True while an editable field holds input focus (tracked from a11y focus events). */
     private var editableFieldFocused = false
     /** True while the capture window is demoted to NOT_FOCUSABLE so the system IME can open. */
@@ -147,7 +141,6 @@ class GamepadMouseService : AccessibilityService() {
     private val chord = ChordDetector(DefaultBindings.toggleChord)
     private val heldModifiers = HashSet<MouseAction>()
     private val bindingMatcher = BindingMatcher()
-    private val keyboardHatNavigation = HatNavigationDetector()
     private val bindingHoldJobs = mutableMapOf<ButtonBinding, kotlinx.coroutines.Job>()
     
     // Chord hold timer
@@ -209,12 +202,6 @@ class GamepadMouseService : AccessibilityService() {
                 // Update cursor size and color
                 overlay?.cursorSizeMultiplier = s.cursorSize
                 overlay?.cursorColor = s.cursorColor
-                keyboardOverlay?.widthPercent = s.keyboardWidthPercent
-                keyboardOverlay?.heightPercent = s.keyboardHeightPercent
-                keyboardOverlay?.atTop = s.keyboardAtTop
-                keyboardOverlay?.showNumberRow = s.keyboardShowNumberRow
-                keyboardOverlay?.showSystemKeys = s.keyboardShowSystemKeys
-                keyboardOverlay?.keyboardColor = s.keyboardColor
                 if (first) {
                     first = false
                     if (s.startInMouseMode) setMode(ServiceMode.MOUSE)
@@ -238,7 +225,6 @@ class GamepadMouseService : AccessibilityService() {
     private fun teardown() {
         unregisterInputDeviceListener()
         removeOverlay()
-        removeKeyboardOverlay()
         scope.cancel()
         if (::audioManager.isInitialized) audioManager.release()
         instance = null
@@ -248,16 +234,13 @@ class GamepadMouseService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event?.source?.let { source ->
-            // Track editable focus ONLY (for the legacy reclaim gate + text target).
-            // We never auto-open our keyboard from field focus: mouse mode must not
-            // override the system IME. Our keyboard appears on explicit intent —
-            // gamepad click on a field, the chord cycle, or the Keyboard Mode binding.
+            // Track editable focus for the mouse-mode reclaim gate. The system IME
+            // (Gamepad Keyboard) owns text input; we only note focus state here.
             // Samsung often delivers the focused editable as the source of
             // WINDOW_CONTENT_CHANGED events, so accept ANY event type here.
             if (source.isEditable && source.isFocused) {
                 if (!editableFieldFocused) {
                     editableFieldFocused = true
-                    keyboardTargetNode = source
                     Log.d(TAG, "editable focus detected (eventType=${event.eventType})")
                 }
             } else if (event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
@@ -311,18 +294,6 @@ class GamepadMouseService : AccessibilityService() {
         if (Companion.imeOverlayUp) return
         when (_mode.value) {
             ServiceMode.MOUSE -> onJoystick(event)
-            ServiceMode.KEYBOARD -> {
-                val kb = keyboardOverlay ?: return
-                val hx = event.getAxisValue(android.view.MotionEvent.AXIS_HAT_X)
-                val hy = event.getAxisValue(android.view.MotionEvent.AXIS_HAT_Y)
-                when (keyboardHatNavigation.update(hx, hy)) {
-                    KeyboardCommand.UP -> kb.moveSelection(-1, 0)
-                    KeyboardCommand.DOWN -> kb.moveSelection(1, 0)
-                    KeyboardCommand.LEFT -> kb.moveSelection(0, -1)
-                    KeyboardCommand.RIGHT -> kb.moveSelection(0, 1)
-                    else -> Unit
-                }
-            }
             ServiceMode.GAMEPAD -> Unit
         }
     }
@@ -337,13 +308,6 @@ class GamepadMouseService : AccessibilityService() {
     }
 
     fun setMode(newMode: ServiceMode) {
-        // Legacy in-app keyboard retired (2026-09-15): the standalone Gamepad Keyboard
-        // IME replaces it. Any path that asks for KEYBOARD mode is a no-op so the
-        // system IME — which the legacy mode used to hide — always handles text.
-        if (newMode == ServiceMode.KEYBOARD) {
-            Log.i(TAG, "legacy keyboard mode retired; ignoring request")
-            return
-        }
         if (_mode.value == newMode) return
         Log.d(TAG, "mode request ${_mode.value} -> $newMode")
         bindingMatcher.reset()
@@ -354,8 +318,7 @@ class GamepadMouseService : AccessibilityService() {
         moveX = 0f; moveY = 0f; scrollX = 0f; scrollY = 0f
         when (newMode) {
             ServiceMode.MOUSE -> {
-                removeKeyboardOverlay()
-                addOverlay()
+                        addOverlay()
                 scheduleFrame()
                 editableFieldFocused = false  // full mouse control; stop protecting field focus
                 imeShield = false
@@ -365,18 +328,9 @@ class GamepadMouseService : AccessibilityService() {
             }
             ServiceMode.GAMEPAD -> {
                 removeOverlay()
-                removeKeyboardOverlay()
-                if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(false)  // pass sticks to games
+                        if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(false)  // pass sticks to games
                 setSystemImeHidden(false)
                 audioManager.play(AudioCue.MODE_SWITCH_GAMEPAD)
-            }
-            ServiceMode.KEYBOARD -> {
-                keyboardTargetNode = findEditableInputNode()
-                removeOverlay()
-                addKeyboardOverlay()
-                if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(true)
-                setSystemImeHidden(true)  // our overlay replaces the system IME
-                audioManager.play(AudioCue.MODE_SWITCH_MOUSE)
             }
         }
         Log.d(TAG, "mode -> $newMode")
@@ -533,12 +487,6 @@ class GamepadMouseService : AccessibilityService() {
             repo.setCursorSize(newSettings.cursorSize)
             repo.setCursorColor(newSettings.cursorColor)
             repo.setAutoHideTimeout(newSettings.autoHideTimeoutMs)
-            repo.setKeyboardWidthPercent(newSettings.keyboardWidthPercent)
-            repo.setKeyboardHeightPercent(newSettings.keyboardHeightPercent)
-            repo.setKeyboardAtTop(newSettings.keyboardAtTop)
-            repo.setKeyboardShowNumberRow(newSettings.keyboardShowNumberRow)
-            repo.setKeyboardShowSystemKeys(newSettings.keyboardShowSystemKeys)
-            repo.setKeyboardColor(newSettings.keyboardColor)
 
             Log.i(TAG, "Switched to profile: $deviceName ($deviceId)")
         }
@@ -670,80 +618,7 @@ class GamepadMouseService : AccessibilityService() {
         }
     }
 
-    /**
-     * After a gamepad click lands at the cursor, if the tapped point focused an
-     * editable field, bring up OUR keyboard. Finger taps never trigger this —
-     * only gamepad-initiated clicks, so the system IME stays untouched otherwise.
-     * Requires the tap point to sit inside the focused field's bounds, so a stale
-     * previously-focused field elsewhere can't pop the keyboard.
-     */
-    private fun maybeOpenKeyboardForTap() {
-        scope.launch {
-            kotlinx.coroutines.delay(350)  // let the tap land and field focus settle
-            if (_mode.value != ServiceMode.MOUSE) return@launch
-            val node = findEditableInputNode() ?: return@launch
-            if (android.os.SystemClock.uptimeMillis() - lastTapAt > 1500L) return@launch
-            val rect = android.graphics.Rect()
-            node.getBoundsInScreen(rect)
-            if (!rect.isEmpty &&
-                lastTapX >= rect.left - 10 && lastTapX <= rect.right + 10 &&
-                lastTapY >= rect.top - 10 && lastTapY <= rect.bottom + 10
-            ) {
-                Log.d(TAG, "gamepad click focused editable -> keyboard mode")
-                setMode(ServiceMode.KEYBOARD)
-            }
-        }
-    }
     
-    private fun addKeyboardOverlay() {
-        if (keyboardOverlay != null) return
-       
-        val kbView = KeyboardOverlayView(this)
-        kbView.widthPercent = 100f
-        kbView.heightPercent = 100f
-        kbView.atTop = settings.keyboardAtTop
-        kbView.showNumberRow = settings.keyboardShowNumberRow
-        kbView.showSystemKeys = settings.keyboardShowSystemKeys
-        kbView.keyboardColor = settings.keyboardColor
-        kbView.onKeyPressed = ::activateKeyboardKey
-        kbView.audioManager = audioManager
-        val keyboardWidth = (displayW * settings.keyboardWidthPercent / 100f).toInt()
-        val keyboardHeight = (displayH * settings.keyboardHeightPercent / 100f).toInt()
-        val kbLp = WindowManager.LayoutParams(
-            keyboardWidth,
-            keyboardHeight,
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = (if (settings.keyboardAtTop) Gravity.TOP else Gravity.BOTTOM) or Gravity.CENTER_HORIZONTAL
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-        }
-        
-        try {
-            windowManager.addView(kbView, kbLp)
-            keyboardOverlay = kbView
-            // NOTE: no focusable capture window in keyboard mode. It would steal window
-            // focus from the app, which makes ACTION_SET_TEXT fail (typed text never
-            // reaches the field). Gamepad/d-pad buttons still arrive via onKeyEvent
-            // (system-wide key filtering needs no window focus).
-            Log.i(TAG, "keyboard overlay added (no capture window; app keeps focus)")
-        } catch (t: Throwable) {
-            Log.e(TAG, "addKeyboardOverlay failed", t)
-        }
-    }
-
-    private fun removeKeyboardOverlay() {
-        keyboardOverlay?.let { runCatching { windowManager.removeViewImmediate(it) } }
-        keyboardOverlay = null
-        joystickCapture?.let { runCatching { windowManager.removeViewImmediate(it) } }
-        joystickCapture = null
-    }
 
     // ---------------------------------------------------------------- buttons
 
@@ -841,30 +716,6 @@ class GamepadMouseService : AccessibilityService() {
                     }
                 }
                 
-                if (_mode.value == ServiceMode.KEYBOARD) {
-                    if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
-                    bindingMatcher.keyDown(code)
-                    val keyboardToggle = s.detailedBindings
-                        .filter { it.action == MouseAction.KEYBOARD_MODE }
-                        .sortedByDescending { it.keyCodes.size }
-                        .firstOrNull { bindingMatcher.isHeld(it) }
-                    if (keyboardToggle != null) {
-                        setMode(ServiceMode.MOUSE)
-                        return true
-                    }
-                    val keyboardBindings = s.detailedBindings.filter { it.appliesIn(ServiceMode.KEYBOARD) }
-                    val matched = bindingMatcher.matching(keyboardBindings, ServiceMode.KEYBOARD)
-                    if (matched.isNotEmpty()) {
-                        matched.forEach { binding ->
-                            bindingMatcher.markFired(binding)
-                            executeAction(binding.action)
-                        }
-                        return true
-                    }
-                    handleKeyboardButtonDown(code)
-                    return DefaultBindings.isGamepadKey(code)
-                }
-
                 if (event.repeatCount > 0) return DefaultBindings.isGamepadKey(code)
                 bindingMatcher.keyDown(code)
                 val modeBindings = s.detailedBindings.filter { it.appliesIn(_mode.value) }
@@ -900,10 +751,6 @@ class GamepadMouseService : AccessibilityService() {
                     }
                 }
                 
-                if (_mode.value == ServiceMode.KEYBOARD) {
-                    handleKeyboardButtonUp(code)
-                    return DefaultBindings.isGamepadKey(code)
-                }
                 val consumedByBinding = s.detailedBindings.any {
                     it.appliesIn(_mode.value) && code in it.keyCodes
                 }
@@ -922,11 +769,9 @@ class GamepadMouseService : AccessibilityService() {
         when (action) {
             MouseAction.TAP -> {
                 tapAtCursor(TAP_MS, true)
-                maybeOpenKeyboardForTap()
             }
             MouseAction.LONG_PRESS -> {
                 tapAtCursor(LONG_PRESS_MS, true)
-                maybeOpenKeyboardForTap()
             }
             MouseAction.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
             MouseAction.HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
@@ -944,163 +789,10 @@ class GamepadMouseService : AccessibilityService() {
             MouseAction.VOLUME_UP -> adjustVolume(AudioManager.ADJUST_RAISE)
             MouseAction.VOLUME_DOWN -> adjustVolume(AudioManager.ADJUST_LOWER)
             MouseAction.VOLUME_MUTE -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE)
-            MouseAction.KEYBOARD_MODE -> {
-                setMode(ModeTransitions.keyboardActionTarget(_mode.value))
-            }
-            MouseAction.KEYBOARD_PRESS -> if (_mode.value == ServiceMode.KEYBOARD) {
-                keyboardOverlay?.getCurrentSelectedKey()?.let(::activateKeyboardKey)
-            }
-            MouseAction.KEYBOARD_BACK -> if (_mode.value == ServiceMode.KEYBOARD) {
-                keyboardOverlay?.let(::backspaceText)
-            }
-            MouseAction.KEYBOARD_MOVE -> if (_mode.value == ServiceMode.KEYBOARD) {
-                keyboardOverlay?.let { kb ->
-                    scope.launch { repo.setKeyboardAtTop(!settings.keyboardAtTop) }
-                    setMode(ServiceMode.MOUSE)
-                    scope.launch { kotlinx.coroutines.delay(100); setMode(ServiceMode.KEYBOARD) }
-                }
-            }
-            MouseAction.KEYBOARD_HIDE -> if (_mode.value == ServiceMode.KEYBOARD) setMode(ServiceMode.MOUSE)
             MouseAction.NONE -> Unit
         }
     }
     
-    private fun handleKeyboardButtonDown(code: Int) {
-        val kb = keyboardOverlay ?: return
-        when (KeyboardInputRouter.commandFor(code)) {
-            KeyboardCommand.UP -> kb.moveSelection(-1, 0)
-            KeyboardCommand.DOWN -> kb.moveSelection(1, 0)
-            KeyboardCommand.LEFT -> kb.moveSelection(0, -1)
-            KeyboardCommand.RIGHT -> kb.moveSelection(0, 1)
-            KeyboardCommand.SELECT -> activateKeyboardKey(kb.getCurrentSelectedKey())
-            KeyboardCommand.BACKSPACE -> backspaceText(kb)
-            KeyboardCommand.SPACE -> appendText(kb, " ")
-            KeyboardCommand.SHIFT -> {
-                // Toggle shift (uppercase/lowercase)
-                kb.shiftEnabled = !kb.shiftEnabled
-            }
-            KeyboardCommand.PREVIOUS_LAYOUT -> {
-                // Previous layout
-                kb.currentLayout = when (kb.currentLayout) {
-                    KeyboardOverlayView.KeyboardLayout.LETTERS -> KeyboardOverlayView.KeyboardLayout.SYMBOLS
-                    KeyboardOverlayView.KeyboardLayout.NUMBERS -> KeyboardOverlayView.KeyboardLayout.LETTERS
-                    KeyboardOverlayView.KeyboardLayout.SYMBOLS -> KeyboardOverlayView.KeyboardLayout.NUMBERS
-                }
-            }
-            KeyboardCommand.NEXT_LAYOUT -> {
-                // Next layout
-                kb.currentLayout = when (kb.currentLayout) {
-                    KeyboardOverlayView.KeyboardLayout.LETTERS -> KeyboardOverlayView.KeyboardLayout.NUMBERS
-                    KeyboardOverlayView.KeyboardLayout.NUMBERS -> KeyboardOverlayView.KeyboardLayout.SYMBOLS
-                    KeyboardOverlayView.KeyboardLayout.SYMBOLS -> KeyboardOverlayView.KeyboardLayout.LETTERS
-                }
-            }
-            KeyboardCommand.ENTER -> appendText(kb, "\n")
-            KeyboardCommand.EXIT -> {
-                // Exit keyboard mode
-                setMode(ServiceMode.MOUSE)
-            }
-            KeyboardCommand.NONE -> Unit
-        }
-    }
-    
-    private fun handleKeyboardButtonUp(code: Int) {
-        // No-op for now, all actions happen on button down
-    }
-    
-    private fun activateKeyboardKey(key: String) {
-        val kb = keyboardOverlay ?: return
-        when (key) {
-            KeyboardOverlayView.KEY_SHIFT -> {
-                kb.shiftEnabled = !kb.shiftEnabled
-                audioManager.play(AudioCue.KEYBOARD_TAP)
-            }
-            KeyboardOverlayView.KEY_CAPS -> {
-                kb.capsLockEnabled = !kb.capsLockEnabled
-                audioManager.play(AudioCue.KEYBOARD_TAP)
-            }
-            KeyboardOverlayView.KEY_BACKSPACE -> {
-                backspaceText(kb)
-                audioManager.play(AudioCue.KEYBOARD_TAP)
-            }
-            KeyboardOverlayView.KEY_SPACE -> {
-                appendText(kb, " ")
-                audioManager.play(AudioCue.KEYBOARD_TAP)
-            }
-            KeyboardOverlayView.KEY_ENTER -> {
-                appendText(kb, "\n")
-                audioManager.play(AudioCue.KEYBOARD_ENTER)
-            }
-            KeyboardOverlayView.KEY_POSITION -> {
-                scope.launch { repo.setKeyboardAtTop(!settings.keyboardAtTop) }
-                setMode(ServiceMode.MOUSE)
-                scope.launch {
-                    kotlinx.coroutines.delay(100)
-                    setMode(ServiceMode.KEYBOARD)
-                }
-            }
-            KeyboardOverlayView.KEY_HIDE -> setMode(ServiceMode.MOUSE)
-            else -> {
-                appendText(kb, kb.displayCharacter(key))
-                kb.consumeOneShotShift()
-                audioManager.play(AudioCue.KEYBOARD_TAP)
-            }
-        }
-    }
-
-    private fun appendText(kb: KeyboardOverlayView, text: String) {
-        val updated = kb.currentText + text
-        // Only mirror the buffer once the field actually accepted the text, so a
-        // failed write doesn't show phantom characters above the keyboard.
-        if (setFocusedText(updated)) kb.currentText = updated
-    }
-
-    private fun backspaceText(kb: KeyboardOverlayView) {
-        if (kb.currentText.isEmpty()) return
-        val updated = kb.currentText.dropLast(1)
-        if (setFocusedText(updated)) kb.currentText = updated
-    }
-
-    private fun setFocusedText(text: String): Boolean {
-        val node = findEditableInputNode() ?: return false
-        // ACTION_SET_TEXT only lands on the node holding input focus; nudge it first.
-        if (!node.isFocused) {
-            node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
-        }
-        val args = android.os.Bundle().apply {
-            putCharSequence(
-                android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                text,
-            )
-        }
-        val ok = node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-        Log.d(TAG, "setFocusedText len=${text.length} ok=$ok")
-        return ok
-    }
-
-    /**
-     * Resolves the editable text target, preferring the node captured from the last
-     * focus event (refreshed), then scanning every window for the input-focused field.
-     * Cached nodes go stale quickly — never trust one across redraws.
-     */
-    private fun findEditableInputNode(): android.view.accessibility.AccessibilityNodeInfo? {
-        keyboardTargetNode?.let { cached ->
-            if (cached.refresh()) {
-                if (cached.isEditable) return cached
-            } else {
-                keyboardTargetNode = null  // stale handle — drop it
-            }
-        }
-        for (window in windows) {
-            val root = window.root ?: continue
-            val focused = root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
-            if (focused != null && focused.isEditable) {
-                keyboardTargetNode = focused
-                return focused
-            }
-        }
-        return null
-    }
 
     /** True when the Gamepad Keyboard IME is the user's active input method. */
     private fun isGamepadKeyboardImeActive(): Boolean {
@@ -1133,17 +825,6 @@ class GamepadMouseService : AccessibilityService() {
         val s = settings
         val hx = event.getAxisValue(MotionEvent.AXIS_HAT_X)
         val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
-        if (_mode.value == ServiceMode.KEYBOARD) {
-            val kb = keyboardOverlay ?: return true
-            when (keyboardHatNavigation.update(hx, hy)) {
-                KeyboardCommand.UP -> kb.moveSelection(-1, 0)
-                KeyboardCommand.DOWN -> kb.moveSelection(1, 0)
-                KeyboardCommand.LEFT -> kb.moveSelection(0, -1)
-                KeyboardCommand.RIGHT -> kb.moveSelection(0, 1)
-                else -> Unit
-            }
-            return true
-        }
         var lx = event.getAxisValue(MotionEvent.AXIS_X)
         var ly = event.getAxisValue(MotionEvent.AXIS_Y)
         var rx = event.getAxisValue(MotionEvent.AXIS_Z)

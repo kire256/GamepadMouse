@@ -34,12 +34,6 @@ data class ProfileSettings(
     val cursorSize: Float = 1.0f,
     val cursorColor: Int = 0xFFFFFFFF.toInt(),
     val autoHideTimeoutMs: Long = 3000L,
-    val keyboardWidthPercent: Float = 80f,
-    val keyboardHeightPercent: Float = 45f,
-    val keyboardAtTop: Boolean = false,
-    val keyboardShowNumberRow: Boolean = true,
-    val keyboardShowSystemKeys: Boolean = true,
-    val keyboardColor: Int = 0xFF202124.toInt(),
     // Unused since v17 — auto-show removed (system IME is never overridden now).
     // Field kept so existing persisted profile JSON still deserializes.
     val autoShowKeyboardOnTextField: Boolean = true,
@@ -65,12 +59,6 @@ fun Settings.toProfileSettings(): ProfileSettings = ProfileSettings(
     cursorSize = cursorSize,
     cursorColor = cursorColor,
     autoHideTimeoutMs = autoHideTimeoutMs,
-    keyboardWidthPercent = keyboardWidthPercent,
-    keyboardHeightPercent = keyboardHeightPercent,
-    keyboardAtTop = keyboardAtTop,
-    keyboardShowNumberRow = keyboardShowNumberRow,
-    keyboardShowSystemKeys = keyboardShowSystemKeys,
-    keyboardColor = keyboardColor,
 )
 
 fun ProfileSettings.toSettings(): Settings {
@@ -101,11 +89,5 @@ fun ProfileSettings.toSettings(): Settings {
         cursorSize = cursorSize,
         cursorColor = cursorColor,
         autoHideTimeoutMs = autoHideTimeoutMs,
-        keyboardWidthPercent = keyboardWidthPercent,
-        keyboardHeightPercent = keyboardHeightPercent,
-        keyboardAtTop = keyboardAtTop,
-        keyboardShowNumberRow = keyboardShowNumberRow,
-        keyboardShowSystemKeys = keyboardShowSystemKeys,
-        keyboardColor = keyboardColor,
     )
 }

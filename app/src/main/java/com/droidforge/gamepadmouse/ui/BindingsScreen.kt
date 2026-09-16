@@ -211,7 +211,6 @@ private fun BindingEditorDialog(
                 Text("Active modes", style = MaterialTheme.typography.titleSmall)
                 ModeCheck("Mouse mode", BindingMode.MOUSE, modes) { modes = it }
                 ModeCheck("Gamepad mode", BindingMode.GAMEPAD, modes) { modes = it }
-                ModeCheck("Keyboard mode", BindingMode.KEYBOARD, modes) { modes = it }
 
                 HorizontalDivider()
                 Text("Hold delay: ${hold.roundToInt()} ms", style = MaterialTheme.typography.titleSmall)

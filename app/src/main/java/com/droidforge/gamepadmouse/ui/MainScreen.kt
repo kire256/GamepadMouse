@@ -95,22 +95,16 @@ fun MainScreen(
                     onClick = { selectedTab = 1 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Tune, contentDescription = null) },
-                    label = { Text("Keyboard") },
+                    icon = { Icon(Icons.Filled.SportsEsports, contentDescription = null) },
+                    label = { Text("Bindings") },
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.SportsEsports, contentDescription = null) },
-                    label = { Text("Bindings") },
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 }
-                )
-                NavigationBarItem(
                     icon = { Icon(Icons.Filled.Tune, contentDescription = null) },
                     label = { Text("General") },
-                    selected = selectedTab == 4,
-                    onClick = { selectedTab = 4 }
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 }
                 )
             }
         }
@@ -130,19 +124,13 @@ fun MainScreen(
                 repo = repo,
                 scope = scope,
             )
-            2 -> KeyboardSettingsTab(
+            2 -> BindingsTab(
                 modifier = Modifier.padding(padding),
                 settings = settings,
                 repo = repo,
                 scope = scope,
             )
-            3 -> BindingsTab(
-                modifier = Modifier.padding(padding),
-                settings = settings,
-                repo = repo,
-                scope = scope,
-            )
-            4 -> AdvancedTab(
+            3 -> AdvancedTab(
                 modifier = Modifier.padding(padding),
                 settings = settings,
                 repo = repo,
@@ -206,8 +194,7 @@ private fun StatusTab(
                     BindingLine("L3", "L3 (stick click)", "Home")
                     BindingLine("LB / RB", "Bumpers", "Slow / fast (hold)")
                     HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    BindingLine("≡ + ⊙", "Start + Select", "Cycle Gamepad → Mouse → Keyboard", bold = true)
-                    BindingLine("A / B / X", "In keyboard mode", "Type / close / delete")
+                    BindingLine("≡ + ⊙", "Start + Select", "Toggle Gamepad ↔ Mouse", bold = true)
                 }
             }
         }
@@ -392,52 +379,6 @@ private fun SettingsTab(
 }
 
 @Composable
-private fun KeyboardSettingsTab(
-    modifier: Modifier,
-    settings: Settings,
-    repo: SettingsRepository,
-    scope: kotlinx.coroutines.CoroutineScope,
-) {
-    var keyboardTestText by remember { mutableStateOf("") }
-    Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text("Keyboard", style = MaterialTheme.typography.titleMedium)
-        SliderRow("Keyboard width", settings.keyboardWidthPercent, 40f..100f, { "${it.roundToInt()}%" }) { scope.launch { repo.setKeyboardWidthPercent(it) } }
-        SliderRow("Keyboard height", settings.keyboardHeightPercent, 25f..80f, { "${it.roundToInt()}%" }) { scope.launch { repo.setKeyboardHeightPercent(it) } }
-        SwitchRow("Position keyboard at top", settings.keyboardAtTop) { scope.launch { repo.setKeyboardAtTop(it) } }
-        SwitchRow("Show number row", settings.keyboardShowNumberRow) { scope.launch { repo.setKeyboardShowNumberRow(it) } }
-        SwitchRow("Show system keys", settings.keyboardShowSystemKeys) { scope.launch { repo.setKeyboardShowSystemKeys(it) } }
-        Text("Keyboard color", style = MaterialTheme.typography.bodyMedium)
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(
-                0xFF202124.toInt() to "Dark", 0xFF263238.toInt() to "Blue gray",
-                0xFF3E2723.toInt() to "Brown", 0xFF1B5E20.toInt() to "Green",
-                0xFF006064.toInt() to "Cyan", 0xFF311B92.toInt() to "Purple",
-                0xFF880E4F.toInt() to "Pink", 0xFF37474F.toInt() to "Slate",
-            ).chunked(4).forEach { colors ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    colors.forEach { (color, label) ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { scope.launch { repo.setKeyboardColor(color) } }) {
-                            Box(Modifier.width(52.dp).height(36.dp).clip(RoundedCornerShape(8.dp)).background(Color(color)).then(if (settings.keyboardColor == color) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier))
-                            Text(label, style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            }
-        }
-        OutlinedTextField(
-            value = keyboardTestText,
-            onValueChange = { keyboardTestText = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Keyboard input test") },
-            placeholder = { Text("Focus this field to test typing") },
-        )
-    }
-}
-
-@Composable
 private fun BindingsTab(
     modifier: Modifier,
     settings: Settings,
@@ -522,11 +463,24 @@ private fun AdvancedTab(
             }
         }
         
-        FeatureCard(
-            title = "Keyboard mode",
-            description = "On-screen keyboard navigable by gamepad for text input. Requires additional accessibility permission.",
-            available = false,
-        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
+            )
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Text input",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "Text fields are handled by the Gamepad Keyboard app (its own listing) — " +
+                        "A types, B closes, X backspaces, d-pad/stick navigate, hold space changes language.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         
         Card(
             modifier = Modifier.fillMaxWidth(),
