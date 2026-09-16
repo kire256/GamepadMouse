@@ -67,8 +67,6 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     // Hat-switch / left-stick edge tracking for selection movement
     private var lastHatX = 0f
     private var lastHatY = 0f
-    private var lastStickX = 0f
-    private var lastStickY = 0f
 
     override fun onCreate() {
         super.onCreate()
@@ -140,16 +138,8 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         if (hy > -0.5f && hy < 0.5f && (lastHatY <= -0.5f || lastHatY >= 0.5f)) kb.stopDirectionalRepeat()
         lastHatX = hx; lastHatY = hy
 
-        if (sx <= -0.5f && lastStickX > -0.5f) { kb.startDirectionalRepeat(0, -1); handled = true }
-        if (sx >= 0.5f && lastStickX < 0.5f) { kb.startDirectionalRepeat(0, 1); handled = true }
-        if (sy <= -0.5f && lastStickY > -0.5f) { kb.startDirectionalRepeat(-1, 0); handled = true }
-        if (sy >= 0.5f && lastStickY < 0.5f) { kb.startDirectionalRepeat(1, 0); handled = true }
-        if (sx > -0.5f && sx < 0.5f && (lastStickX <= -0.5f || lastStickX >= 0.5f)) kb.stopDirectionalRepeat()
-        if (sy > -0.5f && sy < 0.5f && (lastStickY <= -0.5f || lastStickY >= 0.5f)) kb.stopDirectionalRepeat()
-        // White-dot feedback: left stick deflected = cursor is being driven
-        val leftHeld = sx <= -0.5f || sx >= 0.5f || sy <= -0.5f || sy >= 0.5f
-        if (kb.leftStickHeld != leftHeld) kb.leftStickHeld = leftHeld
-        lastStickX = sx; lastStickY = sy
+        // Left stick = radial selector for the LEFT half (continuous vector)
+        kb.setLeftStickVector(sx, sy)
 
         // Right stick VECTOR → radial selector (continuous; scaled radius reaches
         // every key in the right half; deadzone in the view).

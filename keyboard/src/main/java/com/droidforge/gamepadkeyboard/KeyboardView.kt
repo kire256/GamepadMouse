@@ -84,7 +84,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.5.3"
+        const val DISPLAY_VERSION = "v0.5.4"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -639,7 +639,7 @@ class KeyboardView(context: Context) : View(context) {
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> { pressSelectedKey(); true }
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK -> { listener?.onHide(); true }
             // X handled by the service (needs repeatCount to distinguish hold from tap)
-            KeyEvent.KEYCODE_BUTTON_L2 -> { flashSelectedKey(); pressSelectedKey(); true } // type cursor key
+            KeyEvent.KEYCODE_BUTTON_L2 -> { pressLeftRadial(); true }    // type left radial key
             KeyEvent.KEYCODE_BUTTON_R2 -> { pressRightRadial(); true }   // type right radial key
             KeyEvent.KEYCODE_BUTTON_Y -> {
                 // Double-tap Y (~350ms) = caps lock, like Gboard's double-tap shift
@@ -694,64 +694,84 @@ class KeyboardView(context: Context) : View(context) {
     // trigger types the anchor key itself. Level-based: highlight exists only
     // while the direction is held; release returns to the anchor.
 
+    // Dual radial selectors: LEFT stick owns the left half, RIGHT stick the right
+    // half. Each is anchored at its half's home-row quarter; a held direction
+    // highlights the offset key (direction-scaled radius → every key reachable),
+    // the trigger taps it (LT left / RT right). Continuous vectors are kept so the
+    // white dot can visualize the raw stick position (not quantized to keys).
+
+    private var leftOffset: Pair<Int, Int>? = null
     private var rightOffset: Pair<Int, Int>? = null
+    private var leftVector: Pair<Float, Float>? = null
+    private var rightVector: Pair<Float, Float>? = null
 
-    /** True while the left stick is deflected (white dot on the A-cursor key). */
-    var leftStickHeld = false
-        set(value) {
-            if (field != value) { field = value; invalidate() }
-        }
-
-    /** Anchor cell of the right stick: home row, right-half quarter. */
-    private fun rightAnchor(): Pair<Int, Int> {
+    private fun radialAnchor(right: Boolean): Pair<Int, Int> {
         val g = grid()
         val r = minOf(2, g.lastIndex)
         val row = g[r]
         val half = row.size / 2
-        return r to ((row.size * 3) / 4).coerceIn(half, row.lastIndex)
+        val c = if (right) ((row.size * 3) / 4).coerceIn(half, row.lastIndex)
+                else (row.size / 4).coerceIn(0, half - 1)
+        return r to c
     }
 
-    /**
-     * Radial right-stick selector with DIRECTION-SCALED radius: full deflection in
-     * any direction reaches that direction's edge of the right half, so every key
-     * is reachable; partial deflection travels proportionally (Deck-like).
-     */
-    fun setRightStickVector(vx: Float, vy: Float) {
+    private fun setRadialVector(right: Boolean, vx: Float, vy: Float) {
         val g = grid()
         val mag = kotlin.math.sqrt(vx * vx + vy * vy)
         if (mag < 0.35f) {
-            if (rightOffset != null) { rightOffset = null; invalidate() }
+            if (right) {
+                rightVector = null
+                if (rightOffset != null) { rightOffset = null; invalidate() }
+            } else {
+                leftVector = null
+                if (leftOffset != null) { leftOffset = null; invalidate() }
+            }
             return
         }
-        val (ar, ac) = rightAnchor()
-        // Full-deflection travel per direction, recomputed against the anchor row
+        if (right) rightVector = vx to vy else leftVector = vx to vy
+        val (ar, ac) = radialAnchor(right)
         val row = g[ar]
         val half = row.size / 2
-        val maxRight = (row.lastIndex - ac).coerceAtLeast(1)
-        val maxLeft = (ac - half).coerceAtLeast(1)
+        val maxPos = (if (right) row.lastIndex - ac else ac).coerceAtLeast(1)
+        val maxNeg = (if (right) ac - half else ac).coerceAtLeast(1)
         val maxDown = (g.lastIndex - ar).coerceAtLeast(1)
         val maxUp = ar.coerceAtLeast(1)
-        val dc = Math.round(vx / mag * (if (vx >= 0) maxRight else maxLeft) * mag)
-        val dr = Math.round(vy / mag * (if (vy >= 0) maxDown else maxUp) * mag)
+        val dc = Math.round(vx * (if (vx >= 0) maxPos else maxNeg))
+        val dr = Math.round(vy * (if (vy >= 0) maxDown else maxUp))
         val r = (ar + dr).coerceIn(0, g.lastIndex)
         val trow = g[r]
         val thalf = trow.size / 2
-        val c = (ac + dc).coerceIn(thalf, trow.lastIndex)
+        val c = (ac + dc).coerceIn(if (right) thalf else 0, if (right) trow.lastIndex else thalf - 1)
         val off = r to c
-        if (off != rightOffset) { rightOffset = off; invalidate() }
+        if (right) {
+            if (off != rightOffset) { rightOffset = off; invalidate() }
+        } else {
+            if (off != leftOffset) { leftOffset = off; invalidate() }
+        }
     }
 
-    /** RT: type the right radial key (offset while deflected, anchor when centered). */
-    fun pressRightRadial() {
+    fun setLeftStickVector(vx: Float, vy: Float) = setRadialVector(false, vx, vy)
+
+    fun setRightStickVector(vx: Float, vy: Float) = setRadialVector(true, vx, vy)
+
+    /** LT: type the left radial key (offset while deflected, anchor when centered). */
+    fun pressLeftRadial() = pressRadial(false)
+
+    /** RT: type the right radial key. */
+    fun pressRightRadial() = pressRadial(true)
+
+    private fun pressRadial(right: Boolean) {
         val g = grid()
-        val (r, c) = rightOffset ?: rightAnchor()
+        val off = if (right) rightOffset else leftOffset
+        val (r, c) = off ?: radialAnchor(right)
         flashCell(r, c)
         pressKey(g[r][c].label)
     }
 
-    /** Clear the radial highlight (page change). */
+    /** Clear both radial highlights (page change). */
     fun resetRadial() {
-        rightOffset = null
+        leftOffset = null; rightOffset = null
+        leftVector = null; rightVector = null
         invalidate()
     }
 
@@ -1019,18 +1039,14 @@ class KeyboardView(context: Context) : View(context) {
                     canvas.drawRoundRect(rect, radius, radius, keyPaint)
                     canvas.drawRoundRect(rect, radius, radius, selectRingPaint.apply { color = skin.selectRing })
                 }
-                // Right radial: dashed ring + white dot while the stick is held
+                // Radial rings: left = solid, right = dashed (which stick fires which)
+                if (leftOffset?.let { it.first == r && it.second == c } == true) {
+                    canvas.drawRoundRect(rect, radius, radius, selectRingPaint.apply { color = skin.badge })
+                }
                 if (rightOffset?.let { it.first == r && it.second == c } == true) {
                     dashPaint.color = skin.badge
                     dashPaint.strokeWidth = 2.5f * density
                     canvas.drawRoundRect(rect, radius, radius, dashPaint)
-                    dotPaint.color = 0xFFFFFFFF.toInt()
-                    canvas.drawCircle(rect.centerX(), rect.centerY(), 4f * density, dotPaint)
-                }
-                // Left stick deflected: white dot on the key the cursor sits on
-                if (leftStickHeld && highlightVisible && r == selectedRow && c == selectedCol) {
-                    dotPaint.color = 0xFFFFFFFF.toInt()
-                    canvas.drawCircle(rect.centerX(), rect.centerY(), 4f * density, dotPaint)
                 }
 
                 // Legend
@@ -1071,6 +1087,21 @@ class KeyboardView(context: Context) : View(context) {
             newRects += rowRects
         }
         cellRects = newRects
+
+        // --- stick position dots (continuous visualization of raw stick offset) ---
+        // Each dot floats from its anchor key center proportionally to the stick
+        // vector, so you can SEE the analog position before committing the trigger.
+        for ((right, vec) in listOf(false to leftVector, true to rightVector)) {
+            val v = vec ?: continue
+            val (ar, ac) = radialAnchor(right)
+            val anchorRect = cellRects.getOrNull(ar)?.getOrNull(ac) ?: continue
+            val travelX = anchorRect.width() * 0.75f
+            val travelY = anchorRect.height() * 1.6f
+            val cx = anchorRect.centerX() + v.first * travelX
+            val cy = anchorRect.centerY() + v.second * travelY
+            dotPaint.color = 0xFFFFFFFF.toInt()
+            canvas.drawCircle(cx, cy, 4.5f * density, dotPaint)
+        }
 
         // --- hint strip ---
         dimPaint.color = skin.dim

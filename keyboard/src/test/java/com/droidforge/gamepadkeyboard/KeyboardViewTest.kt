@@ -81,15 +81,24 @@ class KeyboardViewTest {
         // X is handled by the service now (hold-aware backspace); L2 = type left cursor
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_L2))
         assertEquals(1, l.keys.size)
-        // Radial: R2 with stick centered types the right anchor key
+        // Radial: RT with stick centered types the right anchor key
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_R2))
         assertEquals(2, l.keys.size)
-        // Up-right deflection (scaled radius) → reaches the digit row → R2 types it
+        // Right stick up-right (scaled radius) → reaches the top row → RT types it
         v.setRightStickVector(0.6f, -0.8f)
         v.pressRightRadial()
         assertEquals(3, l.keys.size)
         // anchor (row2 idx9) + up 2, right 2 → top row index 11
         assertEquals(v.letterRows[0][11].label, l.keys.last())
+        // Left stick radial mirrors it on the left half: LT centered = left anchor
+        assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_L2))
+        assertEquals(4, l.keys.size)
+        v.setLeftStickVector(-0.6f, -0.8f)  // up-left → digit row
+        v.pressLeftRadial()
+        assertEquals(5, l.keys.size)
+        // anchor (row2 idx3) + up 2 (round -1.6→-2), left 2 (round -1.8→-2) → (0,1)
+        assertEquals(v.letterRows[0][1].label, l.keys.last())
+        assertEquals("1", l.keys.last())
         assertTrue(v.onGamepadKeyDown(KeyEvent.KEYCODE_BUTTON_START))
         assertEquals(1, l.enters)
     }
