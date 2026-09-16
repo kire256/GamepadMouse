@@ -59,6 +59,7 @@ fun getActionIcon(action: MouseAction): ImageVector = when (action) {
     MouseAction.SLOW -> Icons.Filled.Speed
     MouseAction.FAST -> Icons.Filled.Speed
     MouseAction.TOGGLE_MODE -> Icons.Filled.Settings
+    MouseAction.TOGGLE_KEYBOARD -> Icons.Filled.TouchApp
     MouseAction.SCREENSHOT -> Icons.Filled.Photo
     MouseAction.NOTIFICATIONS -> Icons.Filled.Notifications
     MouseAction.QUICK_SETTINGS -> Icons.Filled.Settings
@@ -113,6 +114,7 @@ fun CategorizedActionPickerDialog(
         MouseAction.SLOW,
         MouseAction.FAST,
         MouseAction.TOGGLE_MODE,
+        MouseAction.TOGGLE_KEYBOARD,
     )
     
     val systemActions = listOf(

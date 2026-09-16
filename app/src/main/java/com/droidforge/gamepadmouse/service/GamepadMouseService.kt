@@ -310,6 +310,40 @@ class GamepadMouseService : AccessibilityService() {
         else -> setMode(ServiceMode.GAMEPAD)
     }
 
+    /**
+     * Toggle the Gamepad Keyboard IME surface (TOGGLE_KEYBOARD binding action).
+     * Hide: SoftKeyboardController dismisses whatever IME is showing. Show: the
+     * system only opens an IME when a view takes input focus, so re-fire focus on
+     * the currently focused editable node — the IME (ours, since it's default)
+     * then rises on its own. No-ops gracefully when no editable field is focused.
+     */
+    private fun toggleKeyboard() {
+        if (imeOverlayUp) {
+            // BACK is the universal dismiss-keyboard gesture; imeOverlayUp guarantees
+            // the IME is showing, so BACK is consumed by it (no app navigation).
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            Log.i(TAG, "toggleKeyboard -> hide (BACK)")
+            return
+        }
+        val node = findFocusedEditable() ?: run {
+            Log.i(TAG, "toggleKeyboard -> no editable focused; nothing to do")
+            return
+        }
+        node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+        node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+        Log.i(TAG, "toggleKeyboard -> show (refocused editable)")
+    }
+
+    /** Currently focused editable node, scanning all windows (fresh, not cached). */
+    private fun findFocusedEditable(): android.view.accessibility.AccessibilityNodeInfo? {
+        for (window in windows) {
+            val root = window.root ?: continue
+            val focused = root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focused != null && focused.isEditable) return focused
+        }
+        return null
+    }
+
     fun setMode(newMode: ServiceMode) {
         if (_mode.value == newMode) return
         Log.d(TAG, "mode request ${_mode.value} -> $newMode")
@@ -801,6 +835,7 @@ class GamepadMouseService : AccessibilityService() {
             MouseAction.RECENTS -> performGlobalAction(GLOBAL_ACTION_RECENTS)
             MouseAction.SLOW, MouseAction.FAST -> { heldModifiers.add(action); scheduleFrame() }
             MouseAction.TOGGLE_MODE -> toggleMode()
+            MouseAction.TOGGLE_KEYBOARD -> toggleKeyboard()
             MouseAction.SCREENSHOT -> takeScreenshot()
             MouseAction.NOTIFICATIONS -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
             MouseAction.QUICK_SETTINGS -> performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)

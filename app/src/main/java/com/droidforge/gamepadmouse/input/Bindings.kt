@@ -13,6 +13,7 @@ enum class MouseAction(val label: String) {
     SLOW("Slow cursor (hold)"),
     FAST("Fast cursor (hold)"),
     TOGGLE_MODE("Toggle mouse mode"),
+    TOGGLE_KEYBOARD("Toggle keyboard"),
     // System actions
     SCREENSHOT("Screenshot"),
     NOTIFICATIONS("Notifications shade"),
