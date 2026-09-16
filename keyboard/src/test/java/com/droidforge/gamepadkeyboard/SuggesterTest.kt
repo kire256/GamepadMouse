@@ -14,16 +14,17 @@ class SuggesterTest {
     // Real production wordlist read straight from the source asset — same content
     // the APK ships (Robolectric doesn't merge assets in this setup, so we read it
     // from the repo path to test the ACTUAL data, not a synthetic list).
-    private val realWords: List<String> by lazy {
-        java.io.File("src/main/assets/words_en.txt").readLines().map { it.trim().lowercase() }
-    }
+    private val realWords: List<String> =
+        java.io.File("src/main/assets/words_en.txt").readLines()
+            .map { it.substringBefore(' ').trim().lowercase() }  // "word count" format
+            .filter { it.length >= 2 }
 
     private fun suggester() = Suggester(RuntimeEnvironment.getApplication(), { realWords })
 
     @Test
-    fun `production asset file is the real 10k list`() {
-        assertTrue("expected 10k words in src/main/assets, got ${realWords.size}", realWords.size > 5000)
-        assertEquals("the", realWords.first())
+    fun `production asset file is the real 50k list`() {
+        assertTrue("expected 50k words in src/main/assets, got ${realWords.size}", realWords.size > 40000)
+        assertEquals("you", realWords.first())  // opensubs corpus ranks "you" first
     }
 
     @Test

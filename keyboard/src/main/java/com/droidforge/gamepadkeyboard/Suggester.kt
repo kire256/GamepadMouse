@@ -74,7 +74,10 @@ class Suggester(
 
     private fun loadFromAssets(context: Context): List<String> =
         runCatching {
-            context.assets.open(WORDLIST).bufferedReader().readLines().map { it.trim().lowercase() }
+            context.assets.open(WORDLIST).bufferedReader().readLines()
+                // Format: "word count" (opensubs 50k) or plain "word" (10k legacy)
+                .map { it.substringBefore(' ').trim().lowercase() }
+                .filter { it.length >= 2 }
         }.getOrElse { e ->
             _loadError = e.message ?: e.javaClass.simpleName
             emptyList()

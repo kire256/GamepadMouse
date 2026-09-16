@@ -247,12 +247,15 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         val ic = currentInputConnection ?: return null
         val before = ic.getTextBeforeCursor(48, 0) ?: return null
         if (before.isEmpty()) return null
-        // Word = trailing run of letters (stop at space/punct — no composition state)
+        // Word = trailing run of letters/apostrophes (don't, can't) — stops at other
+        // punctuation/space. A trailing apostrophe isn't part of the word yet.
         val sb = StringBuilder()
         for (ch in before.reversed()) {
-            if (ch.isLetter()) sb.append(ch) else break
+            if (ch.isLetter() || (ch == '\'' && sb.isNotEmpty())) sb.append(ch) else break
         }
-        return if (sb.isEmpty()) null else sb.reversed().toString()
+        var word = sb.reversed().toString()
+        while (word.endsWith("'")) word = word.dropLast(1)
+        return if (word.isEmpty()) null else word
     }
 
     private fun syncSuggestions() {
@@ -271,7 +274,18 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             return
         }
         val frag = currentWord()
-        kb.setSuggestions(suggester.stripCandidates(frag ?: ""))
+        if (frag == null) {
+            // Sentence starter prediction: field start or right after . ! ? \n
+            val before1 = currentInputConnection?.getTextBeforeCursor(1, 0)
+            val sentenceStart = before1.isNullOrEmpty() || before1[0] in ".!?\n"
+            if (sentenceStart && keyboardView?.page == KeyboardView.Page.LETTERS) {
+                kb.setSuggestions(listOf("The", "I", "It"))
+                return
+            }
+            kb.setSuggestions(emptyList())
+            return
+        }
+        kb.setSuggestions(suggester.stripCandidates(frag))
     }
 
     /** Replace the in-flight fragment with [word] + trailing space; learn it. */
@@ -357,13 +371,42 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
     // ---- KeyboardView.Listener ------------------------------------------------
 
     override fun onKey(text: String) {
-        currentInputConnection?.commitText(text, 1)
-        // Sentence end → auto-capitalize the next word (unless caps is latched;
-        // autoCap is one-shot and cleared on first use or by pressing Shift)
+        val ic = currentInputConnection
+        // Smart punctuation: -- → —, (c) → ©, (r) → ®, (tm) → ™
+        if (ic != null) {
+            val before1 = ic.getTextBeforeCursor(1, 0)
+            val before3 = ic.getTextBeforeCursor(3, 0)
+            when {
+                text == "-" && before1 == "-" -> {
+                    ic.deleteSurroundingText(1, 0)
+                    ic.commitText("\u2014", 1)  // —
+                    audio.tap()
+                    scheduleSuggestionSync()
+                    return
+                }
+                text == ")" && before3 == "(c" -> {
+                    ic.deleteSurroundingText(3, 0); ic.commitText("\u00A9", 1)
+                    audio.tap(); scheduleSuggestionSync(); return
+                }
+                text == ")" && before3 == "(r" -> {
+                    ic.deleteSurroundingText(3, 0); ic.commitText("\u00AE", 1)
+                    audio.tap(); scheduleSuggestionSync(); return
+                }
+                text == ")" && before3 == "(tm" -> {
+                    ic.deleteSurroundingText(3, 0); ic.commitText("\u2122", 1)
+                    audio.tap(); scheduleSuggestionSync(); return
+                }
+            }
+        }
         if (text.length == 1 && text[0] in ".!?" && keyboardView?.capsLockEnabled != true) {
             keyboardView?.autoCap = true
         }
+        ic?.commitText(text, 1)
         audio.tap()
+        scheduleSuggestionSync()
+    }
+
+    private fun scheduleSuggestionSync() {
         mainHandler.removeCallbacks(suggestionSync)
         mainHandler.postDelayed(suggestionSync, 40)
     }
@@ -449,6 +492,8 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
             commitPinyin(word)
         } else {
             commitSuggestion(word)
+            // The pick provided its own capitalization (e.g. sentence starters)
+            keyboardView?.autoCap = false
         }
     }
 
