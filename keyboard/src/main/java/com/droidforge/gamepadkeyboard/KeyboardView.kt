@@ -85,7 +85,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.5.8"
+        const val DISPLAY_VERSION = "v0.5.9"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -814,7 +814,11 @@ class KeyboardView(context: Context) : View(context) {
 
     var glideEnabled = false
 
+    /** Live resolution during a stroke: service injects { trace -> candidates }. */
+    var glideSuggester: ((String) -> List<String>)? = null
+
     private var gliding = false
+    private var glideStartCell = -1                    // tap-vs-glide disambiguation
     internal var glideCells = ArrayList<Int>()         // packed r*100+c, in visit order
     private var glideLast = -1
     private val glidePath = android.graphics.Path()
@@ -836,20 +840,20 @@ class KeyboardView(context: Context) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                    // Glide start: finger lands on a letter of the letters page
+                    // Glide ARMING: finger lands on a letter — but a tap that never
+                    // leaves this key must still type, so only remember the start.
+                    glideStartCell = -1
                     if (glideEnabled && page == Page.LETTERS) {
                         val (gr, gc) = hitCell(event.x, event.y)
                         if (gr >= 0) {
                             val lbl = grid()[gr][gc].label
                             if (lbl.length == 1 && lbl[0].isLetter()) {
-                                gliding = true
+                                glideStartCell = gr * 100 + gc
+                                gliding = false
                                 glideCells.clear()
                                 glideLast = -1
                                 glidePath.reset()
                                 glidePath.moveTo(event.x, event.y)
-                                pressedRow = -1; pressedCol = -1
-                                invalidate()
-                                return true
                             }
                         }
                     }
@@ -877,6 +881,20 @@ class KeyboardView(context: Context) : View(context) {
                         }
                         invalidate()
                     }
+                } else if (glideStartCell >= 0 && !gliding) {
+                    // Still on the start key? Then it's just a pressed tap so far.
+                    val (r, c) = hitCell(event.x, event.y)
+                    if (r >= 0 && r * 100 + c != glideStartCell) {
+                        // Crossed into another key → this is a GLIDE now
+                        gliding = true
+                        cancelHold()
+                        pressedRow = -1; pressedCol = -1
+                        glideCells.add(glideStartCell)
+                        glideCells.add(r * 100 + c)
+                        glideLast = r * 100 + c
+                        glidePath.lineTo(event.x, event.y)
+                        invalidate()
+                    }
                 } else if (gliding) {
                     val (r, c) = hitCell(event.x, event.y)
                     if (r >= 0) {
@@ -884,6 +902,9 @@ class KeyboardView(context: Context) : View(context) {
                         if (packed != glideLast) {
                             glideLast = packed
                             if (glideCells.isEmpty() || glideCells.last() != packed) glideCells.add(packed)
+                            // Live strip: re-resolve as the trace grows
+                            val live = glideSuggester?.invoke(glideWord())
+                            if (!live.isNullOrEmpty()) setSuggestions(live)
                         }
                     }
                     glidePath.lineTo(event.x, event.y)
@@ -900,6 +921,7 @@ class KeyboardView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP -> {
+                glideStartCell = -1
                 if (gliding) {
                     gliding = false
                     val trace = glideWord()
@@ -946,6 +968,7 @@ class KeyboardView(context: Context) : View(context) {
                 cancelHold()
                 stripLongPress = false
                 gliding = false
+                glideStartCell = -1
                 glidePath.reset()
                 invalidate()
             }

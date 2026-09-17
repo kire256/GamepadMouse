@@ -170,6 +170,9 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
         keyboardView?.arrowsVisible = prefs.arrowsVisible
         keyboardView?.compactMode = prefs.compactMode
         keyboardView?.glideEnabled = prefs.glideEnabled
+        if (prefs.glideEnabled) {
+            keyboardView?.glideSuggester = { trace -> suggester.glideCandidates(trace) }
+        }
         keyboardView?.fieldlessMode = currentInputConnection == null
         keyboardView?.language = LanguagePack.fromCode(prefs.languageCode)
         revertOriginal = null
@@ -351,9 +354,11 @@ class GamepadKeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onGlideTrace(trace: String) {
         val cands = suggester.glideCandidates(trace)
-        if (cands.isEmpty()) return
-        keyboardView?.setSuggestions(cands)
         android.util.Log.d("GPKeyboard", "glide '$trace' -> $cands")
+        val top = cands.firstOrNull() ?: return
+        // Swipe keyboards auto-commit the best match; the strip keeps alternates.
+        commitSuggestion(top)
+        keyboardView?.setSuggestions(cands.drop(1).take(3))
     }
 
     /** Record a prev→next pair when a word commits, then advance the context word. */
