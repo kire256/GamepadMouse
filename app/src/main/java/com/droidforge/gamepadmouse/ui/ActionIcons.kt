@@ -116,6 +116,7 @@ fun CategorizedActionPickerDialog(
         MouseAction.FAST,
         MouseAction.TOGGLE_MODE,
         MouseAction.TOGGLE_KEYBOARD,
+        MouseAction.SNAP_TARGET,
     )
     
     val systemActions = listOf(

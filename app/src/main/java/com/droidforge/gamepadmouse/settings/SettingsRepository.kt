@@ -91,6 +91,16 @@ class SettingsRepository(private val context: Context) {
             chordHoldDurationMs = p[Keys.CHORD_HOLD_DURATION] ?: 0L,
             buttonBindings = p[Keys.BINDINGS]?.let(::decodeBindings) ?: DefaultBindings.buttons,
             detailedBindings = p[Keys.DETAILED_BINDINGS]?.let(BindingCodec::decode)
+                ?.let { stored ->
+                    // Bindings saved before a new default existed (e.g. R3=snap)
+                    // would leave that button unbound forever — merge current
+                    // defaults into any keycode set the user never customized.
+                    val covered = stored.flatMap { it.keyCodes }.toSet()
+                    stored + DefaultBindings.detailed.filter { b ->
+                        b.keyCodes.none { it in covered } &&
+                            b.action != MouseAction.NONE
+                    }
+                }
                 ?: p[Keys.BINDINGS]?.let(BindingCodec::decode)
                 ?: DefaultBindings.detailed,
             audioPack = p[Keys.AUDIO_PACK] ?: "MINIMAL",
