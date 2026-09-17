@@ -424,12 +424,23 @@ class GamepadMouseService : AccessibilityService() {
                 scheduleFrame()
                 editableFieldFocused = false  // full mouse control; stop protecting field focus
                 imeShield = false
+                // An open keyboard would black-hole the sticks: the motion hook
+                // consumes them system-wide while onMotionEvent drops them
+                // (imeOverlayUp guard). Dismiss the IME so the pointer owns input.
+                if (Companion.imeOverlayUp) {
+                    Log.i(TAG, "mouse mode: dismissing open IME (guarded BACK)")
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                }
                 if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(true)
                 setSystemImeHidden(false)
                 audioManager.play(AudioCue.MODE_SWITCH_MOUSE)
             }
             ServiceMode.GAMEPAD -> {
                 removeOverlay()
+                if (Companion.imeOverlayUp) {
+                    Log.i(TAG, "gamepad mode: dismissing open IME (guarded BACK)")
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                }
                         if (Build.VERSION.SDK_INT >= 34) enableMotionEventSources(false)  // pass sticks to games
                 setSystemImeHidden(false)
                 audioManager.play(AudioCue.MODE_SWITCH_GAMEPAD)
