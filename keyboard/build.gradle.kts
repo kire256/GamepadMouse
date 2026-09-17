@@ -11,8 +11,8 @@ android {
         applicationId = "com.droidforge.gamepadkeyboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 44
-        versionName = "0.5.7-glide"
+        versionCode = 45
+        versionName = "0.5.8-glide2"
     }
 
     buildTypes {
