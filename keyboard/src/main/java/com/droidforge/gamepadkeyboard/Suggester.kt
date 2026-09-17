@@ -237,35 +237,48 @@ class Suggester(
         return out.take(max)
     }
 
-    /** Glide (Swype-style) resolve: words containing [trace] as an IN-ORDER
-     *  subsequence (visited keys; extra letters tolerated, order enforced).
-     *  Ranked by fewest extras, then frequency rank. Learned words included. */
+    /** Glide (Swype-style) resolve: real traces are LONGER than the word (the path
+     *  crosses pass-through keys), so [word] must be an in-order subsequence OF the
+     *  trace. Consecutive duplicate keys (sampling jitter) collapse first; ranked by
+     *  fewest leftover trace letters, then frequency. Learned words join the pool. */
     fun glideCandidates(trace: String, max: Int = 3): List<String> {
         if (trace.length < 2) return emptyList()
+        val t = StringBuilder(trace.length)
+        var prev = ' '
+        for (ch in trace) if (ch != prev) { t.append(ch); prev = ch }  // lll → l
+        val T = t.toString()
+        if (T.length < 2) return emptyList()
+
+        // Doubled letters (hello→helo) may consume a single trace occurrence —
+        // real fingers don't always loop a key twice.
+        fun collapse(w: String): String {
+            val sb = StringBuilder(w.length)
+            var p = ' '
+            for (ch in w) if (ch != p) { sb.append(ch); p = ch }
+            return sb.toString()
+        }
+
+        fun subsequence(wRaw: String): Boolean {
+            val w = collapse(wRaw)
+            var ti = 0
+            for (ch in w) {
+                while (ti < T.length && T[ti] != ch) ti++
+                if (ti == T.length) return false
+                ti++
+            }
+            return true
+        }
+
         data class Cand(val word: String, val extras: Int, val rank: Int)
         val out = ArrayList<Cand>()
         for ((rank, w) in words.withIndex()) {
-            if (w.length < trace.length || w.length > trace.length + 3) continue
-            var ti = 0
-            var extras = 0
-            var ok = true
-            for (ch in w) {
-                if (ti < trace.length && ch == trace[ti]) ti++
-                else { extras++; if (extras > 3) { ok = false; break } }
-            }
-            if (ok && ti == trace.length) out.add(Cand(w, extras, rank))
+            if (w.length < 2 || w.length > T.length + 3) continue
+            if (subsequence(w)) out.add(Cand(w, T.length - collapse(w).length, rank))
         }
-        learner?.all()?.keys?.let { learnedWords ->
-            for (w in learnedWords) {
-                if (w.length < trace.length || w.length > trace.length + 3) continue
-                var ti = 0
-                var extras = 0
-                var ok = true
-                for (ch in w) {
-                    if (ti < trace.length && ch == trace[ti]) ti++
-                    else { extras++; if (extras > 3) { ok = false; break } }
-                }
-                if (ok && ti == trace.length) out.add(Cand(w, extras + 1, -1))  // slight demotion
+        learner?.all()?.keys?.let { learned ->
+            for (w in learned) {
+                if (w.length < 2 || w.length > T.length + 3) continue
+                if (subsequence(w)) out.add(Cand(w, T.length - collapse(w).length + 1, -1))
             }
         }
         out.sortWith(compareBy({ it.extras }, { it.rank }))

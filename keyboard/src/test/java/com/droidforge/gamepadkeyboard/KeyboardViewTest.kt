@@ -186,8 +186,9 @@ class KeyboardViewTest {
             wordProvider = { java.io.File("src/main/assets/words_en.txt").readLines()
                 .map { it.substringBefore(' ').trim().lowercase() } }
         )
-        val cands = sug.glideCandidates("helo")  // h-e-l-o, skipped 2nd l
-        assertTrue("hello" in cands)
+        assertTrue("hello" in sug.glideCandidates("helo"))       // idealized trace
+        // REAL swipe: path crosses j/k between h→e and repeats l/o — still resolves
+        assertTrue("hello" in sug.glideCandidates("hejklloloppo"))
         // Real trace on the letters page: h=(2,6) e=(1,3) l=(2,9) l=(2,9 dupe) o=(1,9)
         val packed = listOf(2 * 100 + 6, 1 * 100 + 3, 2 * 100 + 9, 2 * 100 + 9, 1 * 100 + 9)
         v.glideCells.clear()
