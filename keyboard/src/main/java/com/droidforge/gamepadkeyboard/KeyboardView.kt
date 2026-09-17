@@ -85,7 +85,7 @@ class KeyboardView(context: Context) : View(context) {
         const val KEY_OPTIONS = "\u2699"      // ⚙
 
         /** Shown in the hint strip so on-device builds are always identifiable. */
-        const val DISPLAY_VERSION = "v0.5.9"
+        const val DISPLAY_VERSION = "v0.5.10"
         private const val TAG = "GPKeyboard"
         private val REPEAT_DELAY_MS = 400L
         private val REPEAT_RATE_MS = 60L
@@ -505,6 +505,23 @@ class KeyboardView(context: Context) : View(context) {
             postDelayed(run, REPEAT_DELAY_MS)
             return
         }
+        // Letters/symbols with alternates: hold 400ms → accent bubble (Gboard).
+        if (bubbleCandidate(label)) {
+            val run = Runnable {
+                if (pressedRow != r || pressedCol != c) return@Runnable
+                if (gliding || glideStartCell >= 0 && gliding) return@Runnable  // swipe, not hold
+                if (hapticsEnabled) hapticTick()
+                bubbleKey = label
+                bubbleRect = cellRects.getOrNull(r)?.getOrNull(c)
+                bubbleLocked = true
+                bubbleHover = null
+                bubbleAltRects = emptyList()  // laid out in onDraw when rect known
+                invalidate()
+            }
+            holdRunnable = run
+            postDelayed(run, 400L)
+            return
+        }
         if (!keyRepeats(label)) return
         val run = object : Runnable {
             override fun run() {
@@ -807,6 +824,51 @@ class KeyboardView(context: Context) : View(context) {
     private var cellRects: List<List<RectF>> = emptyList()
     private var stripRects: List<RectF> = emptyList()
 
+    // ---- long-press accent bubble ----------------------------------------------
+    // Hold a key ~400ms (unless a glide crosses away first) → bubble above the key
+    // with alternates (Gboard-style). Drag to an alternate, release = commit it.
+
+    /** Alternates per key label (Gboard-style long-press accents). */
+    private fun alternatesFor(label: String): List<String> = when (label) {
+        "a" -> listOf("à", "á", "â", "ä", "ã", "å")
+        "e" -> listOf("è", "é", "ê", "ë")
+        "i" -> listOf("ì", "í", "î", "ï")
+        "o" -> listOf("ò", "ó", "ô", "ö", "õ")
+        "u" -> listOf("ù", "ú", "û", "ü")
+        "n" -> listOf("ñ")
+        "c" -> listOf("ç", "ć")
+        "s" -> listOf("ß", "ś", "š")
+        "y" -> listOf("ÿ")
+        "z" -> listOf("ź", "ż")
+        "$" -> listOf("€", "£", "¥", "¢")
+        "1" -> listOf("¹", "¼", "½")
+        "2" -> listOf("²")
+        "3" -> listOf("³")
+        "0" -> listOf("°")
+        "-" -> listOf("–", "—", "_")
+        "!" -> listOf("¡")
+        "?" -> listOf("¿")
+        else -> emptyList()
+    }
+
+    private var bubbleKey: String? = null
+    private var bubbleRect: android.graphics.RectF? = null
+    private var bubbleAltRects: List<Pair<String, android.graphics.RectF>> = emptyList()
+    private var bubbleLocked = false
+    private var bubbleHover: String? = null
+
+    private fun bubbleCandidate(label: String) =
+        label.length == 1 && alternatesFor(label).isNotEmpty()
+
+    private fun closeBubble() {
+        if (bubbleKey != null || bubbleHover != null) {
+            bubbleKey = null; bubbleRect = null
+            bubbleAltRects = emptyList(); bubbleLocked = false
+            bubbleHover = null
+            invalidate()
+        }
+    }
+
     // ---- glide typing ----------------------------------------------------------
     // Finger-down on a letter starts a trace; MOVE samples visited cells (deduped,
     // min 2 letters); UP resolves via in-order subsequence match against the
@@ -881,6 +943,20 @@ class KeyboardView(context: Context) : View(context) {
                         }
                         invalidate()
                     }
+                } else if (bubbleKey != null && bubbleLocked) {
+                    // Bubble interaction: finger is captive; highlight hovered alt
+                    val f = bubbleAltRects.firstOrNull { it.second.contains(event.x, event.y) }
+                    val hover = f?.first
+                    if (hover != null && (bubbleHover == null || bubbleHover != hover)) {
+                        bubbleHover = hover
+                        if (hapticsEnabled) hapticTick()
+                        invalidate()
+                    } else if (hover == null && bubbleHover != null) {
+                        bubbleHover = null
+                        invalidate()
+                    }
+                    glidePath.lineTo(event.x, event.y)
+                    invalidate()
                 } else if (glideStartCell >= 0 && !gliding) {
                     // Still on the start key? Then it's just a pressed tap so far.
                     val (r, c) = hitCell(event.x, event.y)
@@ -915,6 +991,14 @@ class KeyboardView(context: Context) : View(context) {
                         pressedRow = r; pressedCol = c
                         if (event.actionMasked == MotionEvent.ACTION_DOWN && r >= 0) {
                             startHoldIfRepeatable(r, c)
+                            // Gboard-style snappiness: letters commit on PRESS, not
+                            // lift — fast typing never drops a key that lifted 2px
+                            // off-target. Repeatables (⌫ etc.) stay lift-committed.
+                            if (!keyRepeats(grid()[r][c].label)) {
+                                flashCell(r, c)
+                                pressKey(grid()[r][c].label)
+                                didHoldAction = true  // lift must not double-fire
+                            }
                         } else cancelHold()
                         invalidate()
                     }
@@ -922,6 +1006,24 @@ class KeyboardView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_UP -> {
                 glideStartCell = -1
+                if (bubbleKey != null && bubbleLocked) {
+                    val chosen = bubbleHover
+                    val base = bubbleKey
+                    closeBubble()
+                    glidePath.reset()
+                    pressedRow = -1; pressedCol = -1
+                    if (chosen != null && base != null) {
+                        // Base letter already committed at press-down → swap it
+                        listener?.onBackspace(fromHold = false)
+                        val cased = capsLockEnabled || shiftEnabled || autoCap
+                        val out = if (cased && chosen.length == 1) chosen.uppercase() else chosen
+                        listener?.onKey(out)
+                        if (cased) consumeOneShotShift()
+                        performClick()
+                    }
+                    invalidate()
+                    return true
+                }
                 if (gliding) {
                     gliding = false
                     val trace = glideWord()
@@ -969,6 +1071,7 @@ class KeyboardView(context: Context) : View(context) {
                 stripLongPress = false
                 gliding = false
                 glideStartCell = -1
+                closeBubble()
                 glidePath.reset()
                 invalidate()
             }
@@ -1200,6 +1303,43 @@ class KeyboardView(context: Context) : View(context) {
                     dotPaint.color = 0xFFFFFFFF.toInt()
                     canvas.drawCircle(px, py, 4.5f * density, dotPaint)
                 }
+            }
+        }
+
+        // --- accent bubble ---
+        val bk = bubbleKey
+        val anchor = bubbleRect
+        if (bk != null && anchor != null) {
+            val alts = alternatesFor(bk)
+            if (alts.isNotEmpty()) {
+                val altW = 34f * density
+                val altH = 40f * density
+                val totalW = alts.size * altW + 8f * density
+                var bx = anchor.centerX() - totalW / 2f
+                bx = bx.coerceIn(4f * density, width - totalW - 4f * density)
+                val by = (anchor.top - altH - 10f * density).coerceAtLeast(4f * density)
+                val panel = android.graphics.RectF(bx, by, bx + totalW, by + altH + 8f * density)
+                keyPaint.shader = null
+                keyPaint.color = skin.selectFill
+                canvas.drawRoundRect(panel, 10f * density, 10f * density, keyPaint)
+                canvas.drawRoundRect(panel, 10f * density, 10f * density,
+                    selectRingPaint.apply { color = skin.selectRing })
+                val rects = ArrayList<Pair<String, android.graphics.RectF>>(alts.size)
+                var cx = bx + 4f * density
+                for (alt in alts) {
+                    val r = android.graphics.RectF(cx, by + 4f * density, cx + altW, by + 4f * density + altH)
+                    if (alt == bubbleHover) {
+                        keyPaint.color = skin.flash
+                        canvas.drawRoundRect(r, 8f * density, 8f * density, keyPaint)
+                    }
+                    legendPaint.color = if (alt == bubbleHover) skin.selectRing else skin.legend
+                    legendPaint.textSize = 20f * density
+                    val tw = legendPaint.measureText(alt)
+                    canvas.drawText(alt, r.centerX() - tw / 2f, r.centerY() + 7f * density, legendPaint)
+                    rects.add(alt to r)
+                    cx += altW
+                }
+                bubbleAltRects = rects
             }
         }
 

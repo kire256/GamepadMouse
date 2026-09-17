@@ -11,8 +11,8 @@ android {
         applicationId = "com.droidforge.gamepadkeyboard"
         minSdk = 26
         targetSdk = 35
-        versionCode = 46
-        versionName = "0.5.9-glide-live"
+        versionCode = 47
+        versionName = "0.5.10-bubble"
     }
 
     buildTypes {

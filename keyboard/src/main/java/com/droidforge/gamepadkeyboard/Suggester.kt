@@ -25,15 +25,24 @@ class Suggester(
      * enough — used for autocorrect-on-space. Cheap early exits keep this fast.
      */
     fun bestCorrection(word: String, maxDistance: Int = 2): String? {
+        // Proper nouns: "Erik" looks like a typo of "eric" to any dictionary —
+        // a Capitalized word (not ALL-CAPS) is never autocorrected.
+        if (word.length > 1 && word[0].isUpperCase() && word.drop(1).any { it.isLowerCase() }) return null
         val w = word.lowercase()
         if (w.length < 3 || w[0] !in 'a'..'z') return null
         var best: String? = null
+        var bestScore = Int.MAX_VALUE
         var bestRank = Int.MAX_VALUE
         for ((rank, cand) in words.withIndex()) {
             if (cand[0] != w[0] || cand == w) continue
             if (kotlin.math.abs(cand.length - w.length) > maxDistance) continue
-            if (levenshteinCapped(w, cand, maxDistance) <= maxDistance && rank < bestRank) {
+            if (levenshteinCapped(w, cand, maxDistance) > maxDistance) continue
+            // Positional first (a neighbor-key typo is a far likelier intent than a
+            // same-distance random letter), frequency as tiebreak.
+            val score = positionalScore(w, cand) * 1000 + rank
+            if (score < bestScore || (score == bestScore && rank < bestRank)) {
                 best = cand
+                bestScore = score
                 bestRank = rank
             }
         }
@@ -235,6 +244,39 @@ class Suggester(
         val out = scored.map { it.first }.toMutableList()
         for (s in seedPairs[p].orEmpty()) if (s !in out) out.add(s)
         return out.take(max)
+    }
+
+    // ---- positional (QWERTY-geometry) typo scoring -----------------------------
+    // Finger-accuracy model: a mistyped letter is USUALLY a key adjacent to the
+    // intended one, not a random letter. hwllo → w is adjacent to e → hello.
+
+    private val keyPos: Map<Char, Pair<Int, Int>> = buildMap {
+        "qwertyuiop".forEachIndexed { i, ch -> put(ch, 0 to i) }
+        "asdfghjkl".forEachIndexed { i, ch -> put(ch, 1 to i + 1) }
+        "zxcvbnm".forEachIndexed { i, ch -> put(ch, 2 to i + 2) }
+    }
+
+    /** True when a/b are keyboard neighbors (incl. diagonals) or the same key. */
+    private fun adjacent(a: Char, b: Char): Boolean {
+        if (a == b) return true
+        val pa = keyPos[a] ?: return false
+        val pb = keyPos[b] ?: return false
+        return Math.abs(pa.first - pb.first) <= 1 && Math.abs(pa.second - pb.second) <= 1
+    }
+
+    /**
+     * Positional penalty for [typed] vs [candidate] (same length): each mismatch
+     * costs 4 if the letters are QWERTY-neighbors, 9 otherwise.
+     */
+    private fun positionalScore(typed: String, candidate: String): Int {
+        if (typed.length != candidate.length) return 99
+        var cost = 0
+        for (i in typed.indices) {
+            if (typed[i] != candidate[i]) {
+                cost += if (adjacent(typed[i], candidate[i])) 4 else 9
+            }
+        }
+        return cost
     }
 
     /** Glide (Swype-style) resolve: real traces are LONGER than the word (the path

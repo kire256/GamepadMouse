@@ -51,6 +51,15 @@ class SuggesterTest {
     }
 
     @Test
+    fun `positional autocorrect prefers keyboard neighbors`() {
+        val s = suggester()
+        // w sits next to e on QWERTY → hwllo should correct to hello
+        assertEquals("hello", s.bestCorrection("hwllo"))
+        // A Capitalized proper noun is never autocorrected
+        assertEquals(null, s.bestCorrection("Erik"))
+    }
+
+    @Test
     fun `next-word prediction from learned pairs and seeds`() {
         val s = suggester()
         // Seed: "good" predicts idea/luck/morning without any history
